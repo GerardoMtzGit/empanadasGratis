@@ -669,6 +669,63 @@ CaveBotIconWidget < UIButton
     color: #22c55e
     phantom: true
     text: ON
+
+TargetIconWidget < UIButton
+  size: 46 46
+  focusable: false
+  phantom: false
+  draggable: true
+  background-color: #0b1526ee
+  border-width: 1
+  border-color: #22c55e
+  anchors.left: parent.left
+  anchors.top: parent.top
+  margin-left: 125
+  margin-top: 30
+
+  $on:
+    border-color: #22c55e
+    background-color: #052e16ee
+
+  $!on:
+    border-color: #ef4444
+    background-color: #450a0aee
+
+  $hover:
+    border-color: #86efac
+
+  $pressed:
+    border-color: #4ade80
+    background-color: #166534ee
+
+  UIItem
+    id: item
+    anchors.top: parent.top
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-top: 3
+    virtual: true
+    phantom: true
+    size: 26 26
+
+  UIWidget
+    id: status
+    anchors.top: parent.top
+    anchors.right: parent.right
+    size: 7 7
+    margin-top: 3
+    margin-right: 3
+    background-color: #22c55e
+    phantom: true
+
+  Label
+    id: text
+    anchors.bottom: parent.bottom
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-bottom: 2
+    font: terminus-10px
+    color: #22c55e
+    phantom: true
+    text: ON
 ]])
 
 local cbPanelName = "caveBotIcon"
@@ -836,3 +893,195 @@ UI.Button("Reiniciar Posicion CaveBot (Top-Left)", function()
 end)
 
 UI.Label("Clic en el icono: Prende/Apaga CaveBot.\nSubleyenda: ON (verde) | OFF (rojo).")
+
+-- =========================================================================
+-- ICONO FLOTANTE DE TARGETS / ATAQUES (ON / OFF)
+-- Colocado al lado del icono de CaveBot (BoH)
+-- =========================================================================
+
+local targetPanelName = "targetIcon"
+if not storage[targetPanelName] then
+  storage[targetPanelName] = {
+    enabled = true,
+    itemId = 3288, -- Magic Sword (ícono clásico de target/ataque)
+    lockPosition = true,
+    pos = { x = 125, y = 30 }
+  }
+end
+local targetConfig = storage[targetPanelName]
+if not targetConfig.pos then targetConfig.pos = { x = 125, y = 30 } end
+if targetConfig.enabled == nil then targetConfig.enabled = true end
+if not targetConfig.itemId then targetConfig.itemId = 3288 end
+if targetConfig.lockPosition == nil then targetConfig.lockPosition = true end
+
+local targetIconWidget = nil
+local lastKnownTargetState = nil
+
+local function isTargetsActive()
+  local tbOn = (TargetBot and TargetBot.isOn and TargetBot.isOn()) or false
+  local trOn = (storage["tirar_runa"] and storage["tirar_runa"].enabled) or false
+  local abOn = (storage.AttackBot and storage.AttackBot.enabled) or false
+  local sdOn = (storage["sd_only"] and storage["sd_only"].enabled) or false
+  return (tbOn or trOn or abOn or sdOn)
+end
+
+local function updateTargetIconVisuals()
+  if not targetIconWidget then return end
+
+  if not targetConfig.enabled then
+    targetIconWidget:hide()
+    return
+  end
+  targetIconWidget:show()
+
+  local isTgOn = isTargetsActive()
+  targetIconWidget:setOn(isTgOn)
+
+  if targetIconWidget.item then
+    targetIconWidget.item:setItemId(targetConfig.itemId or 3288)
+  end
+
+  if targetIconWidget.status then
+    targetIconWidget.status:setBackgroundColor(isTgOn and "#22c55e" or "#ef4444")
+  end
+
+  if targetIconWidget.text then
+    targetIconWidget.text:setText(isTgOn and "ON" or "OFF")
+    targetIconWidget.text:setColor(isTgOn and "#22c55e" or "#ef4444")
+  end
+
+  targetIconWidget:setTooltip("Target & Ataques: " .. (isTgOn and "PRENDIDO (ON)" or "APAGADO (OFF)") .. "\nClic para alternar todos los targets\nCtrl+Arrastrar para mover")
+end
+
+local function toggleTargets()
+  local isCurrentlyOn = isTargetsActive()
+  if isCurrentlyOn then
+    -- APAGAR TODOS LOS TARGETS
+    if TargetBot and TargetBot.setOff then
+      TargetBot.setOff()
+    end
+    if storage["tirar_runa"] then
+      storage["tirar_runa"].enabled = false
+    end
+    if storage["sd_only"] then
+      storage["sd_only"].enabled = false
+    end
+    if storage.AttackBot then
+      storage.AttackBot.enabled = false
+    end
+    g_game.cancelAttackAndFollow()
+  else
+    -- PRENDER TARGETS
+    if TargetBot and TargetBot.setOn then
+      TargetBot.setOn()
+    end
+    if storage["tirar_runa"] then
+      storage["tirar_runa"].enabled = true
+    end
+  end
+  updateTargetIconVisuals()
+end
+
+local function createOrUpdateTargetIcon()
+  local gameMapPanel = modules.game_interface and modules.game_interface.getMapPanel()
+  if not gameMapPanel then return end
+
+  if not targetIconWidget then
+    local oldWidget = gameMapPanel:getChildById("targetFloatingIcon")
+    if oldWidget then
+      oldWidget:destroy()
+    end
+    targetIconWidget = g_ui.createWidget("TargetIconWidget", gameMapPanel)
+    targetIconWidget:setId("targetFloatingIcon")
+    targetIconWidget.botWidget = true
+
+    targetIconWidget:setMarginLeft(targetConfig.pos and targetConfig.pos.x or 125)
+    targetIconWidget:setMarginTop(targetConfig.pos and targetConfig.pos.y or 30)
+  end
+
+  targetIconWidget.onClick = function(self)
+    toggleTargets()
+  end
+
+  targetIconWidget.onMouseRelease = function(self, mousePos, mouseButton)
+    if self.isBeingDragged then
+      self.isBeingDragged = false
+      return true
+    end
+    if mouseButton == MouseLeftButton or mouseButton == 1 or not mouseButton then
+      toggleTargets()
+      return true
+    end
+  end
+
+  targetIconWidget.onDragEnter = function(self, mousePos)
+    if targetConfig.lockPosition and not g_keyboard.isCtrlPressed() then
+      return false
+    end
+    self.movingReference = { x = mousePos.x - self:getX(), y = mousePos.y - self:getY() }
+    self.isBeingDragged = true
+    return true
+  end
+
+  targetIconWidget.onDragLeave = function(self)
+    self.isBeingDragged = false
+    return true
+  end
+
+  targetIconWidget.onDragMove = function(self, mousePos, moved)
+    local parent = self:getParent()
+    if not parent then return false end
+    local parentRect = parent:getRect()
+    local newX = math.min(math.max(parentRect.x + 5, mousePos.x - self.movingReference.x), parentRect.x + parentRect.width - self:getWidth() - 5)
+    local newY = math.min(math.max(parentRect.y + 5, mousePos.y - self.movingReference.y), parentRect.y + parentRect.height - self:getHeight() - 5)
+
+    local relX = newX - parentRect.x
+    local relY = newY - parentRect.y
+
+    self:setMarginLeft(relX)
+    self:setMarginTop(relY)
+    targetConfig.pos = { x = relX, y = relY }
+    return true
+  end
+
+  updateTargetIconVisuals()
+end
+
+createOrUpdateTargetIcon()
+if not targetIconWidget then
+  schedule(400, function()
+    createOrUpdateTargetIcon()
+  end)
+end
+
+-- Monitoreo continuo del estado de Targets (sincroniza en 100ms)
+macro(100, function()
+  if targetIconWidget and targetConfig.enabled then
+    local currentTg = isTargetsActive()
+    if currentTg ~= lastKnownTargetState then
+      lastKnownTargetState = currentTg
+      updateTargetIconVisuals()
+    end
+  end
+end)
+
+-- Controles en la pestaña "Iconos" para el icono de Targets
+UI.Separator()
+UI.Label("--- Icono de Targets en Pantalla ---")
+
+local tgSwitch = UI.Switch("Icono de Targets Visible", function(widget)
+  targetConfig.enabled = widget:isOn()
+  updateTargetIconVisuals()
+end)
+tgSwitch:setOn(targetConfig.enabled)
+
+UI.Button("Reiniciar Posicion Targets (Al lado de BoH)", function()
+  targetConfig.pos = { x = 125, y = 30 }
+  if targetIconWidget then
+    targetIconWidget:setMarginLeft(125)
+    targetIconWidget:setMarginTop(30)
+  end
+end)
+
+UI.Label("Clic en el icono: Prende o Apaga todos los targets\n(TargetBot, Tirar Runa, AttackBot y cancela target)")
+

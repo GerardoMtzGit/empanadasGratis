@@ -97,6 +97,8 @@ local hudWidget = nil
 local rowWidgets = {}
 local alertBtnWidget = nil
 local alertWidget = nil
+local iconosSwitchWidget = nil
+local toolsSwitchWidget = nil
 
 local function updateMuteState()
   if hudWidget and hudWidget.header and hudWidget.header.muteBtn then
@@ -146,6 +148,21 @@ local function createOrUpdateHud()
       row.itemIcon:setItemId(s.iconId)
       row.itemName:setText(s.shortName)
       rowWidgets[s.key] = row
+    end
+
+    -- Boton de cierre 'x' para ocultar el HUD directamente desde la pantalla
+    if hudWidget.header and hudWidget.header.closeBtn then
+      hudWidget.header.closeBtn.onClick = function(widget)
+        config.enabled = false
+        hudWidget:setVisible(false)
+        if iconosSwitchWidget then
+          iconosSwitchWidget:setOn(false)
+        end
+        if toolsSwitchWidget then
+          toolsSwitchWidget:setOn(false)
+        end
+        return true
+      end
     end
 
     -- Boton para silenciar/apagar la alarma directamente en el HUD
@@ -234,7 +251,7 @@ macro(1000, function()
 
   if not hudWidget then
     createOrUpdateHud()
-    if not hudWidget then return end
+    return
   end
 
   if not hudWidget:isVisible() then
@@ -242,100 +259,86 @@ macro(1000, function()
   end
 
   local nowSec = os.time()
-  local nowMs = now or (nowSec * 1000)
+  local elapsedTotal = math.max(1, nowSec - huntSession.startTime)
 
   local curCounts = {}
-  local rates = {}
-  local minsLeft = {}
-  local activeMonitored = {}
+  local rates = {}      -- consumo por minuto
+  local minsLeft = {}   -- minutos restantes antes de agotarse
+  local criticalSupply = nil
+  local minMins = 999999
 
-  -- 1. Actualizar conteo y registrar gasto
+  -- 1. Analizar cada suministro y registrar consumo
   for _, s in ipairs(Supplies) do
     local current = getSupplyAmount(s)
     curCounts[s.key] = current
 
     local prev = huntSession.lastCounts[s.key]
-    if prev == nil then
-      huntSession.lastCounts[s.key] = current
-    else
+    if prev ~= nil then
       if current < prev then
         local diff = prev - current
         huntSession.consumedTotal[s.key] = (huntSession.consumedTotal[s.key] or 0) + diff
         table.insert(huntSession.samples[s.key], { time = nowSec, amount = diff })
       end
-      huntSession.lastCounts[s.key] = current
     end
+    huntSession.lastCounts[s.key] = current
 
-    -- Limpiar muestras mayores a 5 minutos (300 s)
+    -- Limpiar muestras de mas de 10 minutos (600s)
     local filtered = {}
-    local usedInWindow = 0
-    local oldestTime = nowSec
+    local recentSum = 0
     for _, sample in ipairs(huntSession.samples[s.key] or {}) do
-      if nowSec - sample.time <= 300 then
+      if (nowSec - sample.time) <= 600 then
         table.insert(filtered, sample)
-        usedInWindow = usedInWindow + sample.amount
-        if sample.time < oldestTime then
-          oldestTime = sample.time
-        end
+        recentSum = recentSum + sample.amount
       end
     end
     huntSession.samples[s.key] = filtered
 
-    -- Calcular tasa de consumo (unidades / minuto)
-    local rate = 0
-    local windowDurationMin = (nowSec - oldestTime) / 60
-    if windowDurationMin >= 0.5 and usedInWindow > 0 then
-      rate = usedInWindow / windowDurationMin
-    else
-      local sessionDurationMin = (nowSec - huntSession.startTime) / 60
-      local totalUsed = huntSession.consumedTotal[s.key] or 0
-      if sessionDurationMin >= 0.2 and totalUsed > 0 then
-        rate = totalUsed / sessionDurationMin
-      end
+    -- Calcular tasa de consumo (ponderada entre reciente y sesion completa)
+    local ratePerMin = 0
+    if #filtered > 0 and elapsedTotal >= 15 then
+      local sampleWindow = math.min(elapsedTotal, 600)
+      local recentRate = (recentSum / sampleWindow) * 60
+      local totalRate = ((huntSession.consumedTotal[s.key] or 0) / elapsedTotal) * 60
+      -- 70% reciente, 30% sesion completa
+      ratePerMin = (recentRate * 0.70) + (totalRate * 0.30)
+    elseif (huntSession.consumedTotal[s.key] or 0) > 0 and elapsedTotal >= 10 then
+      ratePerMin = ((huntSession.consumedTotal[s.key] or 0) / elapsedTotal) * 60
     end
-    rates[s.key] = rate
+    rates[s.key] = ratePerMin
 
-    -- Calcular minutos restantes para este suministro
-    if current == 0 and (huntSession.consumedTotal[s.key] or 0) > 0 then
-      minsLeft[s.key] = 0 -- Agotado
-      table.insert(activeMonitored, s)
-    elseif rate > 0 then
-      local m = current / rate
-      minsLeft[s.key] = m
-      table.insert(activeMonitored, s)
-    else
-      minsLeft[s.key] = nil
-    end
-  end
-
-  -- 2. Encontrar el suministro cuello de botella (el que se agota primero)
-  local minMins = nil
-  local criticalSupply = nil
-
-  for _, s in ipairs(activeMonitored) do
-    local m = minsLeft[s.key]
-    if m ~= nil then
-      if minMins == nil or m < minMins then
-        minMins = m
+    -- Calcular minutos restantes
+    if current == 0 then
+      minsLeft[s.key] = 0
+      if minMins > 0 then
+        minMins = 0
         criticalSupply = s
       end
+    elseif ratePerMin > 0.05 then
+      local mins = current / ratePerMin
+      minsLeft[s.key] = mins
+      if mins < minMins then
+        minMins = mins
+        criticalSupply = s
+      end
+    else
+      minsLeft[s.key] = nil -- Sin uso o tasa casi cero
     end
   end
 
-  -- 3. Actualizar textos e indicativos del Banner Principal
+  -- 2. Determinar estado global y actualizar encabezado
   local banner = hudWidget.header.mainBanner
   local sub = hudWidget.header.subBanner
 
-  if minMins == nil then
+  if minMins >= 999999 or not criticalSupply then
     -- Sin consumo detectado aun
-    banner:setText("⏳ REFILL: CALCULANDO...")
+    banner:setText("[REFILL] CALCULANDO...")
     banner:setColor("#38bdf8")
     sub:setText("Monitoreando UMP y Runas (gasta para estimar)")
     sub:setColor("#94a3b8")
     hudWidget:setBorderColor("#38bdf866")
   elseif minMins == 0 then
     -- Suministro completamente agotado!
-    banner:setText("⚠️ ¡REFILL YA! (0 MIN)")
+    banner:setText("[REFILL YA] (0 MIN)")
     banner:setColor("#ef4444")
     sub:setText("¡Se agotaron las " .. criticalSupply.name .. "!")
     sub:setColor("#fca5a5")
@@ -348,7 +351,7 @@ macro(1000, function()
   elseif minMins <= (config.alertMinutes or 5) then
     -- Peligro critico (< 5 min)
     local roundedMins = math.max(1, math.ceil(minMins))
-    banner:setText(string.format("🚨 ¡REFILL EN ~%d MIN! (%s)", roundedMins, criticalSupply.shortName))
+    banner:setText(string.format("[ALERTA] ¡REFILL EN ~%d MIN! (%s)", roundedMins, criticalSupply.shortName))
     banner:setColor("#f87171")
     sub:setText(string.format("Quedan %d %s (gasto: %d/min)", curCounts[criticalSupply.key], criticalSupply.shortName, math.ceil(rates[criticalSupply.key] or 0)))
     sub:setColor("#fecaca")
@@ -361,7 +364,7 @@ macro(1000, function()
   elseif minMins <= 15 then
     -- Advertencia moderada (5 a 15 min)
     local roundedMins = math.ceil(minMins)
-    banner:setText(string.format("⏳ Te quedan ~%d min de refill", roundedMins))
+    banner:setText(string.format("Te quedan ~%d min de refill", roundedMins))
     banner:setColor("#fbbf24")
     sub:setText(string.format("Se agotan primero: %s (~%d min)", criticalSupply.name, roundedMins))
     sub:setColor("#fde68a")
@@ -369,14 +372,14 @@ macro(1000, function()
   else
     -- Tiempo suficiente (> 15 min)
     local roundedMins = math.ceil(minMins)
-    banner:setText(string.format("⏳ Te quedan ~%d min de refill", roundedMins))
+    banner:setText(string.format("Te quedan ~%d min de refill", roundedMins))
     banner:setColor("#4ade80")
     sub:setText(string.format("Se agotan primero: %s (~%d min)", criticalSupply.name, roundedMins))
     sub:setColor("#bbf7d0")
     hudWidget:setBorderColor("#10b98166")
   end
 
-  -- 4. Actualizar filas individuales
+  -- 3. Actualizar filas individuales
   for _, s in ipairs(Supplies) do
     local row = rowWidgets[s.key]
     if row then
@@ -412,17 +415,57 @@ macro(1000, function()
   end
 end)
 
--- Integracion en la pestaña Tools de vBot
+-- ==========================================
+-- 1. Integracion en la pestaña "Iconos" de vBot
+-- ==========================================
+setDefaultTab("Iconos")
+UI.Separator()
+UI.Label("-- [[ Refill HUD (Tiempo de Caza) ]] --")
+
+iconosSwitchWidget = addSwitch("refillHudEnableIconos", "Refill HUD en Pantalla", function(widget)
+  widget:setOn(not widget:isOn())
+  config.enabled = widget:isOn()
+  if hudWidget then
+    hudWidget:setVisible(config.enabled)
+  end
+  if toolsSwitchWidget then
+    toolsSwitchWidget:setOn(config.enabled)
+  end
+end)
+iconosSwitchWidget:setOn(config.enabled)
+
+UI.Button("Reiniciar Posicion Refill HUD (Top-Right)", function()
+  config.pos = nil
+  if hudWidget then
+    local parent = hudWidget:getParent()
+    if parent then
+      hudWidget:breakAnchors()
+      hudWidget:setMarginTop(10)
+      hudWidget:setMarginRight(10)
+      hudWidget:addAnchor(AnchorTop, 'parent', AnchorTop)
+      hudWidget:addAnchor(AnchorRight, 'parent', AnchorRight)
+    end
+  end
+end)
+
+-- ==========================================
+-- 2. Integracion en la pestaña "Tools" de vBot
+-- ==========================================
 setDefaultTab("Tools")
 UI.Separator()
 UI.Label("Refill Time Estimator (HUD Superior Derecho)")
 
-local switchWidget = UI.Switch(function(widget, isOn)
-  config.enabled = isOn
+toolsSwitchWidget = addSwitch("refillHudEnable", "Show Refill HUD", function(widget)
+  widget:setOn(not widget:isOn())
+  config.enabled = widget:isOn()
   if hudWidget then
-    hudWidget:setVisible(isOn)
+    hudWidget:setVisible(config.enabled)
   end
-end, "Show Refill HUD", config.enabled)
+  if iconosSwitchWidget then
+    iconosSwitchWidget:setOn(config.enabled)
+  end
+end)
+toolsSwitchWidget:setOn(config.enabled)
 
 alertBtnWidget = UI.Button("Apagar Alarma Sonora (Activa)", function(widget)
   config.soundAlert = not config.soundAlert
@@ -432,32 +475,38 @@ alertBtnWidget = UI.Button("Apagar Alarma Sonora (Activa)", function(widget)
   updateMuteState()
 end)
 
-local compactWidget = UI.CheckBox(function(widget, checked)
-  config.compact = checked
+local compactWidget = addSwitch("refillHudCompact", "Compact Mode", function(widget)
+  widget:setOn(not widget:isOn())
+  config.compact = widget:isOn()
   if hudWidget then
-    hudWidget.rowsContainer:setVisible(not checked)
-    hudWidget:setHeight(checked and 46 or 148)
+    hudWidget.rowsContainer:setVisible(not config.compact)
+    hudWidget:setHeight(config.compact and 46 or 148)
   end
-end, "Compact Mode", config.compact)
+end)
+compactWidget:setOn(config.compact)
 
-alertWidget = UI.CheckBox(function(widget, checked)
-  config.soundAlert = checked
+alertWidget = addSwitch("refillHudSound", "Sound Alert (< 5 min)", function(widget)
+  widget:setOn(not widget:isOn())
+  config.soundAlert = widget:isOn()
   if not config.soundAlert then
     pcall(function() stopSound() end)
   end
   updateMuteState()
-end, "Sound Alert (< 5 min)", config.soundAlert)
+end)
+alertWidget:setOn(config.soundAlert)
 
 updateMuteState()
 
-local lockWidget = UI.CheckBox(function(widget, checked)
-  config.lockPosition = checked
-end, "Lock Position (Hold Ctrl to Drag)", config.lockPosition)
+local lockWidget = addSwitch("refillHudLock", "Lock Position (Hold Ctrl to Drag)", function(widget)
+  widget:setOn(not widget:isOn())
+  config.lockPosition = widget:isOn()
+end)
+lockWidget:setOn(config.lockPosition)
 
 UI.Button("Reset Hunt Stats", function()
   resetHuntStats()
   if hudWidget then
-    hudWidget.header.mainBanner:setText("⏳ REFILL: REINICIADO")
+    hudWidget.header.mainBanner:setText("[REFILL] REINICIADO")
     hudWidget.header.subBanner:setText("Estadísticas reiniciadas, monitoreando...")
   end
 end)

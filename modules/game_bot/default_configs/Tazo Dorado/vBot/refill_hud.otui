@@ -74,12 +74,23 @@ RefillHudWidget < UIWidget
     border-radius: 4
 
     Button
-      id: muteBtn
+      id: closeBtn
       anchors.top: parent.top
       anchors.right: parent.right
       margin-top: 3
       margin-right: 4
-      size: 42 18
+      size: 18 18
+      font: cipsoftFont
+      text: x
+      tooltip: Ocultar este HUD (puedes prenderlo o apagarlo en la tab Iconos)
+
+    Button
+      id: muteBtn
+      anchors.top: parent.top
+      anchors.right: closeBtn.left
+      margin-top: 3
+      margin-right: 3
+      size: 38 18
       font: verdana-11px-rounded
       text: MUTE
       tooltip: Clic para apagar o encender la alarma sonora
@@ -96,7 +107,7 @@ RefillHudWidget < UIWidget
       color: #38bdf8
       text-shadow: 1 1 black
       text-align: center
-      text: ⏳ REFILL: CALCULANDO...
+      text: [REFILL] CALCULANDO...
 
     Label
       id: subBanner

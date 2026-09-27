@@ -2,7 +2,12 @@ CaveBot.Extensions.SellAll = {}
 
 if CaveBot and CaveBot.Actions then
   CaveBot.Actions["sellall"] = nil
+  CaveBot.Actions["SellAll"] = nil
 end
+
+-- State tracking for consecutive identical sellall waypoints
+local lastSoldSuccessNpc = nil
+local lastSoldSuccessTime = 0
 
 -- Helper to find the NPC trade window anywhere in OTClient
 local function getNpcTradeWindow()
@@ -175,7 +180,29 @@ CaveBot.Extensions.SellAll.setup = function()
       wait = true
     end
 
-    local npcName = val[1]
+    local npcName = val[1] and tostring(val[1]):trim() or "NPC"
+    local customDelay = tonumber(val[2])
+
+    -- Check if we already sold everything to this NPC in the previous sequential waypoint
+    if retries <= 0 then
+      if lastSoldSuccessNpc and lastSoldSuccessNpc == npcName:lower() and (os.time() - lastSoldSuccessTime < 20) and not isTradeWindowOpen() then
+        warn("CaveBot[SellAll]: Already finished selling to " .. npcName .. ". Skipping duplicate waypoint.")
+        return true
+      end
+    end
+
+    -- Timeout protection: if we've retried 10 times without opening trade or completing, proceed
+    if retries >= 10 then
+      warn("CaveBot[SellAll]: Max retries reached for " .. npcName .. ", proceeding.")
+      safeCloseTrade()
+      lastSoldSuccessNpc = npcName:lower()
+      lastSoldSuccessTime = os.time()
+      delay(800)
+      CaveBot.delay(800)
+      return true
+    end
+
+    -- Locate NPC
     local npc = getCreatureByName(npcName)
     if not npc and not isTradeWindowOpen() then
       local pos = player:getPosition()
@@ -188,26 +215,17 @@ CaveBot.Extensions.SellAll.setup = function()
       end
     end
 
-    -- Timeout protection: after 25 retries, finish and close
-    if retries >= 25 then
-      warn("CaveBot[SellAll]: Completed max rounds, closing trade window and proceeding.")
-      safeCloseTrade()
-      delay(800)
-      CaveBot.delay(800)
-      return true
-    end
-
     delay(200)
     CaveBot.delay(200)
     if npc and not CaveBot.ReachNPC(npcName) then
       return "retry"
     end
 
-    -- If trade is not open yet: open it and wait 7 seconds
+    -- If trade window is not open, say hi/trade and wait 2.5 seconds
     if not isTradeWindowOpen() then
-      warn("CaveBot[SellAll]: Saying hi/trade to " .. tostring(npcName) .. ", waiting 7s for trade window...")
+      warn("CaveBot[SellAll]: Saying hi/trade to " .. tostring(npcName) .. "...")
       CaveBot.OpenNpcTrade()
-      local waitTrade = 7000
+      local waitTrade = 2500
       delay(waitTrade)
       CaveBot.delay(waitTrade)
       return "retry"
@@ -218,78 +236,94 @@ CaveBot.Extensions.SellAll.setup = function()
     if modules.game_npctrade then modules.game_npctrade.npcWindow = win end
     if modules.game_npctrader then modules.game_npctrader.npcWindow = win end
 
-    -- Switch to "Vender" tab on each pass to ensure it stays active
     switchToSellTab()
+    delay(300)
+    CaveBot.delay(300)
 
-    -- Sell pass:
-    warn("CaveBot[SellAll]: Sell pass (round " .. retries .. " of 21)...")
-
-    -- 1. Try native sellAll
+    -- Say "yes" in case of autoloot bag
     pcall(function()
-      if modules.game_npctrade and modules.game_npctrade.sellAll then
-        modules.game_npctrade.sellAll(wait, val)
-      end
-      if modules.game_npctrader and modules.game_npctrader.sellAll then
-        modules.game_npctrader.sellAll(wait, val)
-      end
-      if NPC and NPC.sellAll then
-        NPC.sellAll()
-      end
+      if NPC and NPC.say then NPC.say("yes") end
+      say("yes")
     end)
 
-    -- 2. Direct inventory selling for all items the NPC buys
-    pcall(function()
-      local sellItems = (NPC and NPC.getSellItems and NPC.getSellItems()) or {}
-      for _, entry in ipairs(sellItems) do
-        local isException = false
-        for i = 2, #val do
-          if val[i] == entry.id or val[i] == entry.name then
-            isException = true
-            break
-          end
-        end
-        if not isException then
-          local qty = 0
-          pcall(function() qty = NPC.getSellQuantity(entry.item) end)
-          if not qty or qty <= 0 then
-            pcall(function() qty = NPC.getSellQuantity(entry.id) end)
-          end
-          if qty and qty > 0 then
-            NPC.sell(entry.item, qty, true)
-          end
-        end
-      end
-    end)
+    -- Slower, human-paced delay between passes (default 650ms) to completely prevent server kicks
+    local passDelay = customDelay or 650
+    local maxPasses = 18
+    local consecutiveEmpty = 0
 
-    -- Also say "yes" in case of autoloot bag
-    if retries == 1 then
+    warn(string.format("CaveBot[SellAll]: Executing %d sell passes with %dms delay for %s...", maxPasses, passDelay, npcName))
+
+    for pass = 1, maxPasses do
+      -- 1. Native module sellAll (sells items according to client's internal routine)
       pcall(function()
-        if NPC and NPC.say then NPC.say("yes") end
-        say("yes")
+        if modules.game_npctrade and modules.game_npctrade.sellAll then
+          modules.game_npctrade.sellAll(wait, val)
+        elseif modules.game_npctrader and modules.game_npctrader.sellAll then
+          modules.game_npctrader.sellAll(wait, val)
+        end
       end)
+
+      -- 2. Direct single-item sell backup to ensure 100% of items sell without packet flood
+      local soldAny = false
+      pcall(function()
+        local sellItems = (NPC and NPC.getSellItems and NPC.getSellItems()) or {}
+        for _, entry in ipairs(sellItems) do
+          local isException = false
+          for i = 2, #val do
+            if val[i] == entry.id or val[i] == entry.name then
+              isException = true
+              break
+            end
+          end
+          if not isException then
+            local qty = 0
+            pcall(function() qty = NPC.getSellQuantity(entry.item) end)
+            if not qty or qty <= 0 then
+              pcall(function() qty = NPC.getSellQuantity(entry.id) end)
+            end
+            if qty and qty > 0 then
+              NPC.sell(entry.item, qty, true)
+              soldAny = true
+              break -- only sell ONE item per pass directly to avoid flood/kicks!
+            end
+          end
+        end
+      end)
+
+      if soldAny then
+        consecutiveEmpty = 0
+      else
+        consecutiveEmpty = consecutiveEmpty + 1
+        -- If for 4 consecutive passes nothing could be sold directly and at least 4 passes have run, everything is sold!
+        if pass >= 4 and consecutiveEmpty >= 4 then
+          warn("CaveBot[SellAll]: All items sold successfully! Finishing early at pass " .. pass .. ".")
+          break
+        end
+      end
+
+      delay(passDelay)
+      CaveBot.delay(passDelay)
     end
 
-    -- If we have completed 21 sell passes (retries 1 to 21):
-    if retries >= 21 then
-      warn("CaveBot[SellAll]: Finished 21 sell passes! Closing trade window and continuing.")
-      safeCloseTrade()
-      delay(800)
-      CaveBot.delay(800)
-      return true
-    end
-
-    -- Wait 400ms between each sell round so the server processes each packet safely
-    local passDelay = 400
-    delay(passDelay)
-    CaveBot.delay(passDelay)
-    return "retry"
+    warn("CaveBot[SellAll]: Completed selling to " .. npcName .. "! Closing trade window.")
+    safeCloseTrade()
+    lastSoldSuccessNpc = npcName:lower()
+    lastSoldSuccessTime = os.time()
+    delay(800)
+    CaveBot.delay(800)
+    return true
   end
 
   CaveBot.Actions["sellall"] = nil
+  CaveBot.Actions["SellAll"] = nil
   CaveBot.registerAction("SellAll", "#C300FF", callback)
 
   if CaveBot.Actions then
     CaveBot.Actions["sellall"] = {
+      color = "#C300FF",
+      callback = callback
+    }
+    CaveBot.Actions["SellAll"] = {
       color = "#C300FF",
       callback = callback
     }
@@ -298,7 +332,7 @@ CaveBot.Extensions.SellAll.setup = function()
   CaveBot.Editor.registerAction("sellall", "sell all", {
     value="NPC",
     title="Sell All",
-    description="NPC Name, 'yes' if sell with delay, exceptions: id separated by comma",
+    description="NPC Name, delay in ms (default 650), exceptions: id separated by comma",
   })
 end
 

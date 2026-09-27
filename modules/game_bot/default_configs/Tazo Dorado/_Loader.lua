@@ -23,6 +23,7 @@ local luaFiles = {
   "configs", -- do not change this and above
   "extras",
   "tirar_runa",
+  "druid_familiar",
   "cavebot",
   "playerlist",
   "BotServer",

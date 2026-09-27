@@ -23,6 +23,7 @@ local luaFiles = {
   "configs", -- do not change this and above
   "extras",
   "tirar_runa",
+  "druid_familiar",
   "cavebot",
   "playerlist",
   "BotServer",
@@ -34,6 +35,7 @@ local luaFiles = {
   "HealBot",
   "icons_tab",
   "cooldown_hud",
+  "sd_only",
   "new_healer",
   "AttackBot", -- last of major modules
   "ingame_editor",

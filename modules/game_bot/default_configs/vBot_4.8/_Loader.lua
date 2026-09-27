@@ -23,6 +23,7 @@ local luaFiles = {
   "configs", -- do not change this and above
   "extras",
   "tirar_runa",
+  "druid_familiar",
   "cavebot",
   "playerlist",
   "BotServer",
@@ -34,6 +35,7 @@ local luaFiles = {
   "HealBot",
   "icons_tab",
   "cooldown_hud",
+  "sd_only",
   "new_healer",
   "AttackBot", -- last of major modules
   "ingame_editor",
@@ -56,8 +58,7 @@ local luaFiles = {
   "xeno_menu",
   "hold_target",
   "refill_hud",
-  "cavebot_control_panel",
-  "ai_agent"  -- HegalOT AI Agent (voz + GPT-4)
+  "cavebot_control_panel"
 }
 
 for i, file in ipairs(luaFiles) do
