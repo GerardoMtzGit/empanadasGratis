@@ -1,5 +1,6 @@
 
 -- Tile compatibility patch
+
 if Tile then
   if not Tile.hasCreature and Tile.hasCreatures then
     Tile.hasCreature = Tile.hasCreatures
@@ -24,7 +25,7 @@ vBot.customCooldowns = {}
 function logInfo(text)
     local timestamp = os.date("%H:%M:%S")
     text = tostring(text)
-    local start = timestamp.." [vBot]"
+    local start = timestamp.." [vBot]: "
 
     return modules.client_terminal.addLine(start..text, "orange") 
 end
@@ -563,6 +564,8 @@ function getActiveItemId(id)
         return 23532
     elseif id == 23533 then
         return 23534
+    elseif id == 23544 then
+        return 23528
     elseif id == 23529 then
         return 23530
     elseif id == 30343 then -- Sleep Shawl

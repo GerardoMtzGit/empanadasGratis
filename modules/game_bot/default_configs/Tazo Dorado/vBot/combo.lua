@@ -393,6 +393,7 @@ end)
 
 local timeout = now
 macro(10, function()
+  if storage.sdOnly and storage.sdOnly.enabled then return end
   if config.enabled and startCombo then
     if config.attackItemEnabled and config.item and config.item > 100 and findItem(config.item) then
       useWith(config.item, getTarget())

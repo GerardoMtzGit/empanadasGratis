@@ -55,7 +55,9 @@ local luaFiles = {
   "npc_talk",
   "xeno_menu",
   "hold_target",
-  "cavebot_control_panel"
+  "refill_hud",
+  "cavebot_control_panel",
+  "ai_agent"  -- HegalOT AI Agent (voz + GPT-4)
 }
 
 for i, file in ipairs(luaFiles) do

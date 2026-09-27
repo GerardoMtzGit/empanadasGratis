@@ -7,6 +7,59 @@ local lastCall = now
 local delayFrom = nil
 local dynamicLureDelay = false
 
+TargetBot.dynamicLureEngaged = false
+TargetBot.dynamicLureStepDelay = 2000
+TargetBot.dynamicLureMin = 2
+TargetBot.dynamicLureMax = 6
+
+TargetBot.isDynamicLureWaiting = function()
+  return TargetBot.dynamicLureEngaged == true
+end
+
+TargetBot.getDynamicLureStepDelay = function()
+  if TargetBot.dynamicLureEngaged then
+    return TargetBot.dynamicLureStepDelay or 2000
+  end
+  local minMobs = TargetBot.dynamicLureMin or 2
+  local livingMobs = (CaveBot and CaveBot.getLivingMonstersOnScreen and CaveBot.getLivingMonstersOnScreen()) or (TargetBot.targetsCount or 0)
+  if livingMobs >= minMobs and livingMobs > 0 then
+    return TargetBot.dynamicLureStepDelay or 2000
+  end
+  return 0
+end
+
+local originalMapClickDelay = nil
+TargetBot.syncDynamicLureMapClickDelay = function(engaged, delay)
+  if not CaveBot or not CaveBot.Config or not CaveBot.Config.get then return end
+  local isMapClick = CaveBot.Config.get("mapClick")
+
+  if engaged and isMapClick then
+    if originalMapClickDelay == nil then
+      originalMapClickDelay = CaveBot.Config.get("mapClickDelay") or 0
+    end
+    local targetDelay = tonumber(delay) or TargetBot.dynamicLureStepDelay or 2000
+    if CaveBot.Config.get("mapClickDelay") ~= targetDelay then
+      if CaveBot.Config.value_setters and CaveBot.Config.value_setters["mapClickDelay"] then
+        CaveBot.Config.value_setters["mapClickDelay"](targetDelay)
+      elseif CaveBot.Config.values then
+        CaveBot.Config.values["mapClickDelay"] = targetDelay
+      end
+    end
+  else
+    if originalMapClickDelay ~= nil then
+      local restore = originalMapClickDelay
+      originalMapClickDelay = nil
+      if CaveBot.Config.get("mapClickDelay") ~= restore then
+        if CaveBot.Config.value_setters and CaveBot.Config.value_setters["mapClickDelay"] then
+          CaveBot.Config.value_setters["mapClickDelay"](restore)
+        elseif CaveBot.Config.values then
+          CaveBot.Config.values["mapClickDelay"] = restore
+        end
+      end
+    end
+  end
+end
+
 function getWalkableTilesCount(position)
   local count = 0
 
@@ -126,30 +179,53 @@ TargetBot.Creature.walk = function(creature, config, targets)
     end
   end
 
-  -- data for external dynamic lure
-  if config.lureMin and config.lureMax and config.dynamicLure then
-    if config.lureMin >= targets then
-      targetBotLure = true
-    elseif targets >= config.lureMax then
-      targetBotLure = false
+  -- data for dynamic lure
+  local isDynamic = config.dynamicLure or config.dynamicLureDelay
+  local lMin = config.delayFrom or config.lureMin or 2
+  local lMax = config.lureMax or 6
+  local lDelay = config.lureDelay or 2000
+
+  TargetBot.dynamicLureMin = lMin
+  TargetBot.dynamicLureMax = lMax
+  TargetBot.dynamicLureStepDelay = lDelay
+
+  if isDynamic then
+    -- Engage delay when living creature count on screen reaches lMin or more
+    -- When fewer than lMin creatures (or monsters dead), no delay (normal walk speed)
+    local livingMobs = (CaveBot and CaveBot.getLivingMonstersOnScreen and CaveBot.getLivingMonstersOnScreen()) or targets
+    if livingMobs >= lMin and livingMobs > 0 then
+      TargetBot.dynamicLureEngaged = true
+    else
+      TargetBot.dynamicLureEngaged = false
     end
+
+    -- Character must NEVER stop walking!
+    -- CaveBot handles 100% of waypoint navigation.
+    -- TargetBot yields walking to CaveBot completely.
+    anchorPosition = nil
+    TargetBot.walkTo(nil)
+    TargetBot.allowCaveBot(5000)
+    return
+  else
+    TargetBot.dynamicLureEngaged = false
   end
+
+  targetBotLure = not TargetBot.dynamicLureEngaged
   targetCount = targets
-  delayValue = config.lureDelay
-
-  if config.lureMax then
-    lureMax = config.lureMax
-  end
-
-  dynamicLureDelay = config.dynamicLureDelay
-  delayFrom = config.delayFrom
+  delayValue = lDelay
+  lureMax = lMax
+  dynamicLureDelay = isDynamic
+  delayFrom = config.delayFrom or lMax
 
   -- luring
   if config.closeLure and config.closeLureAmount <= getMonsters(1) then
     return TargetBot.allowCaveBot(150)
   end
-  if TargetBot.canLure() and (config.lure or config.lureCavebot or config.dynamicLure) and not (creature:getHealthPercent() < (storage.extras.killUnder or 30)) and not isTrapped then
-    if targetBotLure then
+  if TargetBot.canLure() and (config.lure or config.lureCavebot or config.dynamicLure or config.dynamicLureDelay) and not (creature:getHealthPercent() < (storage.extras.killUnder or 30)) and not isTrapped then
+    if isDynamic then
+      anchorPosition = nil
+      return TargetBot.allowCaveBot(150)
+    elseif targetBotLure then
       anchorPosition = nil
       return TargetBot.allowCaveBot(150)
     else
@@ -234,13 +310,4 @@ TargetBot.Creature.walk = function(creature, config, targets)
   end
 end
 
-onPlayerPositionChange(function(newPos, oldPos)
-  if CaveBot.isOff() then return end
-  if TargetBot.isOff() then return end
-  if not lureMax then return end
-  if storage.TargetBotDelayWhenPlayer then return end
-  if not dynamicLureDelay then return end
-
-  if targetCount < (delayFrom or lureMax/2) or not target() then return end
-  CaveBot.delay(delayValue or 0)
-end)
+-- Note: Step delay for dynamic lure is handled centrally in cavebot/walking.lua

@@ -115,6 +115,19 @@ targetbotMacro = macro(100, function()
   -- reset walking
   TargetBot.walkTo(nil)
 
+  -- track targets and active config for dynamic lure
+  TargetBot.targetsCount = targets
+  TargetBot.activeConfig = highestPriorityParams and highestPriorityParams.config
+
+  local hasDynamic = false
+  for _, entry in ipairs(TargetBot.targetList:getChildren()) do
+    if entry.value and (entry.value.dynamicLure or entry.value.dynamicLureDelay) then
+      hasDynamic = true
+      break
+    end
+  end
+  TargetBot.dynamicLureEnabled = hasDynamic
+
   -- looting
   local looting = TargetBot.Looting.process(targets, dangerLevel)
   local lootingStatus = TargetBot.Looting.getStatus()
@@ -128,6 +141,10 @@ targetbotMacro = macro(100, function()
     TargetBot.Creature.attack(highestPriorityParams, targets, looting)    
     if lootingStatus:len() > 0 then
       TargetBot.setStatus("Attack & " .. lootingStatus)
+    elseif TargetBot.dynamicLureEngaged then
+      TargetBot.setStatus("Dynamic Lure Delay (" .. targets .. ")")
+    elseif TargetBot.isDynamicLureActive and TargetBot.isDynamicLureActive() then
+      TargetBot.setStatus("Dynamic Luring (" .. targets .. ")")
     elseif cavebotAllowance > now then
       TargetBot.setStatus("Luring using CaveBot")
     else
@@ -141,6 +158,15 @@ targetbotMacro = macro(100, function()
     return
   end
 
+  local effDelay = (CaveBot and CaveBot.getEffectiveMapClickDelay and CaveBot.getEffectiveMapClickDelay()) or 0
+  if effDelay == 0 then
+    TargetBot.dynamicLureEngaged = false
+    if TargetBot.syncDynamicLureMapClickDelay then
+      TargetBot.syncDynamicLureMapClickDelay(false)
+    end
+  end
+  TargetBot.targetsCount = (CaveBot and CaveBot.getLivingMonstersOnScreen and CaveBot.getLivingMonstersOnScreen()) or 0
+  TargetBot.activeConfig = nil
   ui.target.right:setText("-")
   ui.config.right:setText("-")
   if looting then
@@ -210,7 +236,23 @@ TargetBot.isActive = function() -- return true if attacking or looting takes pla
   return lastAction + 300 > now
 end
 
+TargetBot.isDynamicLureActive = function()
+  if TargetBot.dynamicLureEngaged then
+    return true
+  end
+  if TargetBot.activeConfig and (TargetBot.activeConfig.dynamicLure or TargetBot.activeConfig.dynamicLureDelay) then
+    return true
+  end
+  if TargetBot.dynamicLureEnabled and (TargetBot.targetsCount or 0) > 0 then
+    return true
+  end
+  return false
+end
+
 TargetBot.isCaveBotActionAllowed = function()
+  if TargetBot.dynamicLureEngaged or (TargetBot.isDynamicLureActive and TargetBot.isDynamicLureActive()) then
+    return true
+  end
   return cavebotAllowance > now
 end
 
@@ -240,6 +282,10 @@ end
 TargetBot.setOff = function(val)
   if val == false then  
     return TargetBot.setOn(true)
+  end
+  TargetBot.dynamicLureEngaged = false
+  if TargetBot.syncDynamicLureMapClickDelay then
+    TargetBot.syncDynamicLureMapClickDelay(false)
   end
   config.setOff()
 end

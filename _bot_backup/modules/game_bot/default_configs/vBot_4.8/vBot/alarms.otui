@@ -30,7 +30,7 @@ AlarmCheckBoxAndSpinBox < Panel
     margin-bottom: 1
     anchors.bottom: parent.bottom
     anchors.right: parent.right
-    width: 40
+    width: 44
     minimum: 0
     maximum: 100
     step: 1
@@ -60,9 +60,49 @@ AlarmCheckBoxAndTextEdit < Panel
     margin-top: 1
     margin-bottom: 1
 
+AlarmCheckBoxComboBoxAndSpinBox < Panel
+  height: 20
+  margin-top: 2
+
+  CheckBox
+    id: tick
+    anchors.left: parent.left
+    anchors.top: parent.top
+    anchors.bottom: parent.bottom
+    width: 78
+    margin-top: 2
+    font: verdana-11px-rounded
+    text: Low Rune
+    text-offset: 17 -3
+
+  ComboBox
+    id: runeCombo
+    anchors.left: prev.right
+    anchors.right: next.left
+    anchors.top: parent.top
+    anchors.bottom: parent.bottom
+    margin-left: 3
+    margin-right: 3
+    margin-top: 1
+    margin-bottom: 1
+
+  SpinBox
+    id: value
+    anchors.top: parent.top
+    anchors.bottom: parent.bottom
+    anchors.right: parent.right
+    margin-top: 1
+    margin-bottom: 1
+    width: 44
+    minimum: 0
+    maximum: 5000
+    step: 1
+    editable: true
+    focusable: true
+
 AlarmsWindow < MainWindow
   !text: tr('Alarms')
-  size: 330 400
+  size: 330 450
   padding: 15
   @onEscape: self:hide()
 

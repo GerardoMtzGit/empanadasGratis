@@ -10,6 +10,9 @@ end
 
 -- called every 100ms if targeting or looting is active
 TargetBot.walk = function()
+  -- When dynamic lure delay is engaged, CaveBot owns all movement.
+  -- TargetBot must NOT send walk steps directly, or it bypasses CaveBot.delay.
+  if TargetBot.dynamicLureEngaged then return end
   if not dest then return end
   if player:isWalking() then return end
   local pos = player:getPosition()

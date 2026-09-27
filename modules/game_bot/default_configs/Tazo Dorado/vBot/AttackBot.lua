@@ -1130,6 +1130,7 @@ end
 -- support function covered, now the main loop
 macro(100, function()
   if not currentSettings.enabled then return end
+  if storage.sdOnly and storage.sdOnly.enabled then return end
   if #currentSettings.attackTable == 0 or isInPz() or not target() or modules.game_cooldown.isGroupCooldownIconActive(1) then return end
 
   if currentSettings.Training and target() and target():getName():lower():find("training") then return end

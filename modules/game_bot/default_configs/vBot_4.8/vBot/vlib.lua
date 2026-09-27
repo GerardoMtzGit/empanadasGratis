@@ -1,5 +1,6 @@
 
 -- Tile compatibility patch
+
 if Tile then
   if not Tile.hasCreature and Tile.hasCreatures then
     Tile.hasCreature = Tile.hasCreatures

@@ -728,3 +728,194 @@ if true then
       end
   end)
 end
+
+-- =========================================================================
+-- Ver ID de objetos al darles Look (Show Item IDs on Look)
+-- =========================================================================
+addCheckBox("showLookId", "Show Item IDs on Look", true, rightPanel, "Show item ID in description and console when looking at objects")
+if true then
+  local lastLooked = nil
+
+  local function resolveItemId(thing)
+    if not thing then return nil end
+
+    -- 1. Si es directamente un Item
+    if thing.isItem and thing:isItem() then
+      local count = 1
+      if thing.getCount then
+        local c = thing:getCount()
+        if type(c) == "number" and c > 1 then count = c end
+      end
+      return thing:getId(), count
+    end
+
+    -- 2. Si es un Tile (e.g., click en mapa)
+    if thing.getTopLookThing then
+      local lookThing = thing:getTopLookThing()
+      if lookThing and lookThing.isItem and lookThing:isItem() then
+        local count = 1
+        if lookThing.getCount then
+          local c = lookThing:getCount()
+          if type(c) == "number" and c > 1 then count = c end
+        end
+        return lookThing:getId(), count
+      end
+    end
+
+    -- 3. Si el Tile tiene items
+    if thing.getItems then
+      local items = thing:getItems()
+      if type(items) == "table" and #items > 0 then
+        local topItem = items[#items] or items[1]
+        if topItem and topItem.getId then
+          return topItem:getId(), 1
+        end
+      end
+    end
+
+    -- 4. Si el Tile tiene suelo (ground)
+    if thing.getGround then
+      local ground = thing:getGround()
+      if ground and ground.getId then
+        return ground:getId(), 1
+      end
+    end
+
+    -- 5. Respaldo generico si tiene getId() y no es criatura
+    if thing.getId and (not thing.isCreature or not thing:isCreature()) then
+      local id = thing:getId()
+      if type(id) == "number" and id > 0 then
+        return id, 1
+      end
+    end
+
+    return nil
+  end
+
+  local function isLookText(t)
+    if not t or type(t) ~= "string" then return false end
+    return t:find("You see") ~= nil
+        or t:find("Ves ") ~= nil
+        or t:find("Tu ves") ~= nil
+        or t:find("Voce ve") ~= nil
+        or t:find("Voc. ve") ~= nil
+  end
+
+  local function formatIdTag(id, count)
+    if count and count > 1 then
+      return string.format("[ID: %d | Count: %d]", id, count)
+    else
+      return string.format("[ID: %d]", id)
+    end
+  end
+
+  -- Hook a g_game.look para capturar el item inspeccionado
+  if not g_game._origLookForId then
+    g_game._origLookForId = g_game.look
+  end
+
+  g_game.look = function(thing, isHotkeyed)
+    if settings.showLookId and thing then
+      local id, count = resolveItemId(thing)
+      if id and id > 0 then
+        lastLooked = {
+          id = id,
+          count = count,
+          time = g_clock.millis(),
+          pos = thing.getPosition and thing:getPosition() or nil
+        }
+      end
+    end
+    return g_game._origLookForId(thing, isHotkeyed)
+  end
+
+  -- Hook a displayMessage de modules.game_textmessage si esta disponible
+  if modules.game_textmessage and modules.game_textmessage.displayMessage then
+    if not modules.game_textmessage._origDisplayMessageForId then
+      modules.game_textmessage._origDisplayMessageForId = modules.game_textmessage.displayMessage
+      modules.game_textmessage.displayMessage = function(mode, text)
+        if settings.showLookId and lastLooked and (g_clock.millis() - lastLooked.time < 3500) then
+          if isLookText(text) and not text:find("%[ID:") then
+            local tag = formatIdTag(lastLooked.id, lastLooked.count)
+            text = text .. " " .. tag
+            lastLooked = nil
+          end
+        end
+        return modules.game_textmessage._origDisplayMessageForId(mode, text)
+      end
+    end
+  end
+
+  -- Listener a onTextMessage para asegurar actualizacion en pantalla y consola
+  onTextMessage(function(mode, text)
+    if not settings.showLookId then return end
+    if not lastLooked or (g_clock.millis() - lastLooked.time >= 3500) then return end
+    if not isLookText(text) then return end
+
+    local id = lastLooked.id
+    local count = lastLooked.count
+    local tag = formatIdTag(id, count)
+    lastLooked = nil
+
+    -- 1. Actualizar labels en la pantalla central y barra de estado
+    local function patchScreenLabels()
+      if not modules.game_textmessage or not modules.game_textmessage.messagesPanel then return end
+      local mp = modules.game_textmessage.messagesPanel
+      local labels = {}
+      if mp.centerTextMessagePanel then
+        table.insert(labels, mp.centerTextMessagePanel.highCenterLabel)
+        table.insert(labels, mp.centerTextMessagePanel.lowCenterLabel)
+      end
+      table.insert(labels, mp.statusLabel)
+      table.insert(labels, mp.bottomCenterLabel)
+
+      for _, lbl in ipairs(labels) do
+        if lbl and lbl:isVisible() then
+          local t = lbl:getText()
+          if t and isLookText(t) and not t:find("%[ID:") then
+            lbl:setText(t .. " " .. tag)
+          end
+        end
+      end
+    end
+
+    patchScreenLabels()
+    schedule(15, patchScreenLabels)
+    schedule(50, patchScreenLabels)
+
+    -- 2. Actualizar buffer de la consola (Server Log / Default)
+    local function patchConsole()
+      local g_console = modules.game_console
+      if not g_console or not g_console.consoleTabBar then return end
+      local tabs = { "Server Log", "Default" }
+      if g_console.getCurrentTab and g_console.getCurrentTab() then
+        local curTab = g_console.getCurrentTab():getText()
+        if curTab and not table.find(tabs, curTab) then
+          table.insert(tabs, curTab)
+        end
+      end
+      for _, tabName in ipairs(tabs) do
+        local tab = g_console.getTab(tabName)
+        if tab then
+          local panel = g_console.consoleTabBar:getTabPanel(tab)
+          if panel then
+            local consoleBuffer = panel:getChildById('consoleBuffer')
+            if consoleBuffer then
+              local lastMsg = consoleBuffer:getLastChild()
+              if lastMsg and lastMsg.getText then
+                local msgText = lastMsg:getText()
+                if msgText and isLookText(msgText) and not msgText:find("%[ID:") then
+                  lastMsg:setText(msgText .. " " .. tag)
+                end
+              end
+            end
+          end
+        end
+      end
+    end
+
+    patchConsole()
+    schedule(15, patchConsole)
+    schedule(50, patchConsole)
+  end)
+end

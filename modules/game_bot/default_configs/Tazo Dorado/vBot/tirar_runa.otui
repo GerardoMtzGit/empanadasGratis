@@ -1,6 +1,6 @@
 TirarRunaWindow < MainWindow
   !text: tr('Configuracion: Tirar Runa / Spell')
-  size: 340 415
+  size: 340 435
   @onEscape: self:hide()
 
   Label
@@ -206,6 +206,15 @@ TirarRunaWindow < MainWindow
     anchors.right: parent.right
     margin-top: 5
     text: PVP Seguro (usar single si hay jugadores)
+    font: cipsoftFont
+
+  CheckBox
+    id: prioritizeMana
+    anchors.top: prev.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 5
+    text: Siempre priorizar tener >20% de mana antes de tirar runa
     font: cipsoftFont
 
   HorizontalSeparator

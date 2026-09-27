@@ -607,3 +607,232 @@ onManaChange(function(player, mana, maxMana, oldMana, oldMaxMana)
     updateVisuals()
   end
 end)
+
+-- =========================================================================
+-- ICONO FLOTANTE DE CAVEBOT (ON / OFF)
+-- =========================================================================
+
+g_ui.loadUIFromString([[
+CaveBotIconWidget < UIButton
+  size: 46 46
+  focusable: false
+  phantom: false
+  draggable: true
+  background-color: #0b1526ee
+  border-width: 1
+  border-color: #22c55e
+  anchors.left: parent.left
+  anchors.top: parent.top
+  margin-left: 75
+  margin-top: 30
+
+  $on:
+    border-color: #22c55e
+    background-color: #052e16ee
+
+  $!on:
+    border-color: #ef4444
+    background-color: #450a0aee
+
+  $hover:
+    border-color: #86efac
+
+  $pressed:
+    border-color: #4ade80
+    background-color: #166534ee
+
+  UIItem
+    id: item
+    anchors.top: parent.top
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-top: 3
+    virtual: true
+    phantom: true
+    size: 26 26
+
+  UIWidget
+    id: status
+    anchors.top: parent.top
+    anchors.right: parent.right
+    size: 7 7
+    margin-top: 3
+    margin-right: 3
+    background-color: #22c55e
+    phantom: true
+
+  Label
+    id: text
+    anchors.bottom: parent.bottom
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-bottom: 2
+    font: terminus-10px
+    color: #22c55e
+    phantom: true
+    text: ON
+]])
+
+local cbPanelName = "caveBotIcon"
+if not storage[cbPanelName] then
+  storage[cbPanelName] = {
+    enabled = true,
+    itemId = 3079, -- Boots of Haste por defecto
+    lockPosition = true,
+    pos = { x = 75, y = 30 }
+  }
+end
+local cbConfig = storage[cbPanelName]
+if not cbConfig.pos then cbConfig.pos = { x = 75, y = 30 } end
+if cbConfig.enabled == nil then cbConfig.enabled = true end
+if not cbConfig.itemId then cbConfig.itemId = 3079 end
+if cbConfig.lockPosition == nil then cbConfig.lockPosition = true end
+
+local caveBotIconWidget = nil
+local lastKnownCbState = nil
+
+local function isCaveBotActive()
+  if CaveBot and CaveBot.isOn then
+    return CaveBot.isOn()
+  end
+  return false
+end
+
+local function updateCaveBotVisuals()
+  if not caveBotIconWidget then return end
+
+  if not cbConfig.enabled then
+    caveBotIconWidget:hide()
+    return
+  end
+  caveBotIconWidget:show()
+
+  local isCbOn = isCaveBotActive()
+
+  caveBotIconWidget:setOn(isCbOn)
+
+  if caveBotIconWidget.item then
+    caveBotIconWidget.item:setItemId(cbConfig.itemId or 3079)
+  end
+
+  if caveBotIconWidget.status then
+    caveBotIconWidget.status:setBackgroundColor(isCbOn and "#22c55e" or "#ef4444")
+  end
+
+  if caveBotIconWidget.text then
+    caveBotIconWidget.text:setText(isCbOn and "ON" or "OFF")
+    caveBotIconWidget.text:setColor(isCbOn and "#22c55e" or "#ef4444")
+  end
+
+  caveBotIconWidget:setTooltip("CaveBot: " .. (isCbOn and "PRENDIDO (ON)" or "APAGADO (OFF)") .. "\nClic para alternar\nCtrl+Arrastrar para mover")
+end
+
+local function toggleCaveBot()
+  if not CaveBot then return end
+  if isCaveBotActive() then
+    CaveBot.setOff()
+  elseif CaveBot.setOn then
+    CaveBot.setOn()
+  end
+  updateCaveBotVisuals()
+end
+
+local function createOrUpdateCaveBotIcon()
+  local gameMapPanel = modules.game_interface and modules.game_interface.getMapPanel()
+  if not gameMapPanel then return end
+
+  if not caveBotIconWidget then
+    local oldWidget = gameMapPanel:getChildById("caveBotFloatingIcon")
+    if oldWidget then
+      oldWidget:destroy()
+    end
+    caveBotIconWidget = g_ui.createWidget("CaveBotIconWidget", gameMapPanel)
+    caveBotIconWidget:setId("caveBotFloatingIcon")
+    caveBotIconWidget.botWidget = true
+
+    caveBotIconWidget:setMarginLeft(cbConfig.pos and cbConfig.pos.x or 75)
+    caveBotIconWidget:setMarginTop(cbConfig.pos and cbConfig.pos.y or 30)
+  end
+
+  caveBotIconWidget.onClick = function(self)
+    toggleCaveBot()
+  end
+
+  caveBotIconWidget.onMouseRelease = function(self, mousePos, mouseButton)
+    if self.isBeingDragged then
+      self.isBeingDragged = false
+      return true
+    end
+    if mouseButton == MouseLeftButton or mouseButton == 1 or not mouseButton then
+      toggleCaveBot()
+      return true
+    end
+  end
+
+  caveBotIconWidget.onDragEnter = function(self, mousePos)
+    if cbConfig.lockPosition and not g_keyboard.isCtrlPressed() then
+      return false
+    end
+    self.movingReference = { x = mousePos.x - self:getX(), y = mousePos.y - self:getY() }
+    self.isBeingDragged = true
+    return true
+  end
+
+  caveBotIconWidget.onDragLeave = function(self)
+    self.isBeingDragged = false
+    return true
+  end
+
+  caveBotIconWidget.onDragMove = function(self, mousePos, moved)
+    local parent = self:getParent()
+    if not parent then return false end
+    local parentRect = parent:getRect()
+    local newX = math.min(math.max(parentRect.x + 5, mousePos.x - self.movingReference.x), parentRect.x + parentRect.width - self:getWidth() - 5)
+    local newY = math.min(math.max(parentRect.y + 5, mousePos.y - self.movingReference.y), parentRect.y + parentRect.height - self:getHeight() - 5)
+
+    local relX = newX - parentRect.x
+    local relY = newY - parentRect.y
+
+    self:setMarginLeft(relX)
+    self:setMarginTop(relY)
+    cbConfig.pos = { x = relX, y = relY }
+    return true
+  end
+
+  updateCaveBotVisuals()
+end
+
+createOrUpdateCaveBotIcon()
+if not caveBotIconWidget then
+  schedule(400, function()
+    createOrUpdateCaveBotIcon()
+  end)
+end
+
+-- Monitoreo continuo del estado de CaveBot (sincroniza en 100ms si se prende o apaga desde la ventana del bot)
+macro(100, function()
+  if not caveBotIconWidget or not cbConfig.enabled then return end
+  local current = isCaveBotActive()
+  if current ~= lastKnownCbState then
+    lastKnownCbState = current
+    updateCaveBotVisuals()
+  end
+end)
+
+-- Controles en la pestaña "Iconos"
+UI.Separator()
+UI.Label("--- Icono de CaveBot en Pantalla ---")
+
+local cbSwitch = UI.Switch("Icono de CaveBot Visible", function(widget)
+  cbConfig.enabled = widget:isOn()
+  updateCaveBotVisuals()
+end)
+cbSwitch:setOn(cbConfig.enabled)
+
+UI.Button("Reiniciar Posicion CaveBot (Top-Left)", function()
+  cbConfig.pos = { x = 75, y = 30 }
+  if caveBotIconWidget then
+    caveBotIconWidget:setMarginLeft(75)
+    caveBotIconWidget:setMarginTop(30)
+  end
+end)
+
+UI.Label("Clic en el icono: Prende/Apaga CaveBot.\nSubleyenda: ON (verde) | OFF (rojo).")

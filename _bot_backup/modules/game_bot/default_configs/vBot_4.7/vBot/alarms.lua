@@ -50,7 +50,28 @@ local widgets =
 {
   "AlarmCheckBox", 
   "AlarmCheckBoxAndSpinBox", 
-  "AlarmCheckBoxAndTextEdit"
+  "AlarmCheckBoxAndTextEdit",
+  "AlarmCheckBoxComboBoxAndSpinBox"
+}
+
+local CommonRunes = {
+  { name = "Sudden Death (SD)", ids = {3155, 2268} },
+  { name = "Avalanche", ids = {3161, 2274} },
+  { name = "Great Fireball (GFB)", ids = {3191, 2304} },
+  { name = "Thunderstorm", ids = {3202, 2315} },
+  { name = "Stone Shower", ids = {3175, 2288} },
+  { name = "Magic Wall", ids = {3180, 2293} },
+  { name = "Wild Growth", ids = {3156, 2269} },
+  { name = "Paralyze", ids = {3165, 2278} },
+  { name = "Ultimate Healing (UH)", ids = {3160, 2273} },
+  { name = "Icicle", ids = {3158, 2271} },
+  { name = "Fire Bomb", ids = {3192, 2305} },
+  { name = "Energy Bomb", ids = {3149, 2262} },
+  { name = "Poison Bomb", ids = {3173, 2286} },
+  { name = "Destroy Field", ids = {3148, 2261} },
+  { name = "Heavy Magic Missile", ids = {3198, 2311} },
+  { name = "Explosion", ids = {3200, 2313} },
+  { name = "Disintegrate", ids = {3197, 2310} }
 }
 
 local parents = 
@@ -60,7 +81,7 @@ local parents =
 }
 
 -- type
-addAlarm = function(id, title, defaultValue, alarmType, parent, tooltip)
+addAlarm = function(id, title, defaultValue, alarmType, parent, tooltip, maxVal)
   local widget = UI.createWidget(widgets[alarmType], parents[parent])
   widget:setId(id)
 
@@ -91,6 +112,10 @@ addAlarm = function(id, title, defaultValue, alarmType, parent, tooltip)
   end
 
   if alarmType == 2 then
+    if maxVal then
+      widget.value:setMaximum(maxVal)
+      widget.value:setWidth(48)
+    end
     widget.value:setValue(config[id].value or defaultValue)
     widget.value.onValueChange = function(widget, value)
       config[id].value = value
@@ -99,6 +124,32 @@ addAlarm = function(id, title, defaultValue, alarmType, parent, tooltip)
     widget.text:setText(config[id].value or defaultValue or "")
     widget.text.onTextChange = function(widget, newText)
       config[id].value = newText
+    end
+  elseif alarmType == 4 then
+    if maxVal then
+      widget.value:setMaximum(maxVal)
+      widget.value:setWidth(44)
+    end
+    widget.value:setValue(config[id].value or defaultValue)
+    widget.value.onValueChange = function(widget, value)
+      config[id].value = value
+    end
+
+    if comboOptions then
+      for _, opt in ipairs(comboOptions) do
+        local optName = type(opt) == "table" and opt.name or opt
+        widget.runeCombo:addOption(optName)
+      end
+    end
+
+    local defaultRune = defaultCombo or (comboOptions and comboOptions[1] and (type(comboOptions[1]) == "table" and comboOptions[1].name or comboOptions[1])) or "Sudden Death (SD)"
+    if not config[id].rune then
+      config[id].rune = defaultRune
+    end
+
+    widget.runeCombo:setOption(config[id].rune)
+    widget.runeCombo.onOptionChange = function(comboWidget, optionText)
+      config[id].rune = optionText
     end
   end
 end
@@ -111,6 +162,8 @@ addAlarm("flashClient", "Flash Client", true, 1, 2)
 addAlarm("damageTaken", "Damage Taken", false, 1, 1)
 addAlarm("lowHealth", "Low Health", 20, 2, 1)
 addAlarm("lowMana", "Low Mana", 20, 2, 1)
+addAlarm("lowUmp", "Low Ultimate Mana", 30, 2, 1, "Alerts when Ultimate Mana Potions count is at or below this value", 5000)
+addAlarm("lowRune", "Low Rune", 30, 4, 1, "Alerts when selected rune count is at or below this value", 5000, CommonRunes, "Sudden Death (SD)")
 addAlarm("playerAttack", "Player Attack", false, 1, 1)
 
 UI.Separator(window.list)
@@ -138,6 +191,8 @@ local function alarm(file, windowText)
       file = "/sounds/magnum.ogg"
     end
     lastCall = now + 4000 -- alarm.ogg length is 6s
+  elseif file == "/sounds/alarm.ogg" then
+    lastCall = now + 4000
   end
 
   pcall(function()
@@ -207,6 +262,35 @@ onTalk(function(name, level, mode, text, channelId, pos)
   end
 end)
 
+local function getUmpCount()
+  if not g_game.isOnline() or not player then return 0 end
+  local count = 0
+  if itemAmount then
+    pcall(function()
+      count = (itemAmount(23373) or 0) + (itemAmount(438) or 0)
+    end)
+  end
+  return count
+end
+
+local function getRuneCount(runeName)
+  if not g_game.isOnline() or not player or not runeName then return 0 end
+  for _, r in ipairs(CommonRunes) do
+    if r.name == runeName then
+      local total = 0
+      if itemAmount then
+        for _, id in ipairs(r.ids) do
+          pcall(function()
+            total = total + (itemAmount(id) or 0)
+          end)
+        end
+      end
+      return total
+    end
+  end
+  return 0
+end
+
 -- health, mana & spectators
 macro(100, function() 
   if not config.enabled then return end
@@ -219,6 +303,21 @@ macro(100, function()
   if config.lowMana and config.lowMana.enabled then
     if manapercent() < (config.lowMana.value or 20) then
       return alarm("/sounds/Low_Mana.ogg", "Low Mana! (" .. manapercent() .. "%)")
+    end
+  end
+
+  if config.lowUmp and config.lowUmp.enabled then
+    local umpCount = getUmpCount()
+    if umpCount <= (config.lowUmp.value or 30) then
+      return alarm("/sounds/alarm.ogg", "Low Ultimate Mana! (" .. umpCount .. ")")
+    end
+  end
+
+  if config.lowRune and config.lowRune.enabled then
+    local selectedRune = config.lowRune.rune or "Sudden Death (SD)"
+    local runeCount = getRuneCount(selectedRune)
+    if runeCount <= (config.lowRune.value or 30) then
+      return alarm("/sounds/alarm.ogg", "Low " .. selectedRune .. "! (" .. runeCount .. ")")
     end
   end
 

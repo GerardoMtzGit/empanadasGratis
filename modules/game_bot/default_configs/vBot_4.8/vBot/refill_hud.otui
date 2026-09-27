@@ -1,0 +1,127 @@
+RefillSupplyRow < UIWidget
+  height: 22
+  margin-top: 2
+  background-color: #0b1524aa
+  border-width: 1
+  border-color: #ffffff15
+  border-radius: 3
+
+  UIItem
+    id: itemIcon
+    size: 18 18
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 3
+    virtual: true
+    phantom: true
+
+  Label
+    id: itemName
+    anchors.left: itemIcon.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 5
+    font: verdana-11px-rounded
+    color: #e2e8f0
+    text-shadow: 1 1 black
+    text: UMP
+
+  Label
+    id: itemCount
+    anchors.left: parent.left
+    anchors.verticalCenter: parent.verticalCenter
+    margin-left: 96
+    font: verdana-11px-rounded
+    color: #38bdf8
+    text-shadow: 1 1 black
+    text: 0
+
+  Label
+    id: itemTime
+    anchors.right: parent.right
+    anchors.verticalCenter: parent.verticalCenter
+    margin-right: 5
+    font: verdana-11px-rounded
+    color: #4ade80
+    text-shadow: 1 1 black
+    text: -
+
+RefillHudWidget < UIWidget
+  id: refillHudFloating
+  size: 244 148
+  focusable: false
+  phantom: false
+  draggable: true
+  background-color: #050b14ea
+  border-width: 1
+  border-color: #38bdf866
+  border-radius: 5
+  opacity: 0.95
+
+  anchors.top: parent.top
+  anchors.right: parent.right
+  margin-top: 10
+  margin-right: 10
+
+  UIWidget
+    id: header
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: 42
+    background-color: #0f172acc
+    border-width: 1
+    border-color: #38bdf833
+    border-radius: 4
+
+    Button
+      id: muteBtn
+      anchors.top: parent.top
+      anchors.right: parent.right
+      margin-top: 3
+      margin-right: 4
+      size: 42 18
+      font: verdana-11px-rounded
+      text: MUTE
+      tooltip: Clic para apagar o encender la alarma sonora
+
+    Label
+      id: mainBanner
+      anchors.top: parent.top
+      anchors.left: parent.left
+      anchors.right: muteBtn.left
+      margin-top: 3
+      margin-left: 4
+      margin-right: 2
+      font: verdana-11px-bold
+      color: #38bdf8
+      text-shadow: 1 1 black
+      text-align: center
+      text: ⏳ REFILL: CALCULANDO...
+
+    Label
+      id: subBanner
+      anchors.top: mainBanner.bottom
+      anchors.left: parent.left
+      anchors.right: parent.right
+      margin-top: 2
+      margin-left: 4
+      margin-right: 4
+      font: verdana-9px
+      color: #94a3b8
+      text-shadow: 1 1 black
+      text-align: center
+      text: Monitoreando UMP y Runas
+
+  UIWidget
+    id: rowsContainer
+    anchors.top: header.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.bottom: parent.bottom
+    margin-top: 3
+    margin-left: 3
+    margin-right: 3
+    margin-bottom: 3
+    layout:
+      type: verticalBox
+      fit-children: false

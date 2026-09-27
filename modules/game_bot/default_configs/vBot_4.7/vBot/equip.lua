@@ -81,6 +81,150 @@ for i=1,scripts do
   end)
 end
 
+-- =========================================================================
+-- Emergencia: Auto SSA + Might Ring (< 15% Mana)
+-- =========================================================================
+UI.Separator()
+
+if type(storage.emergencyEquip) ~= "table" then
+  storage.emergencyEquip = {
+    enabled = false,
+    manaPercent = 15,
+    ssaId = 3081,
+    ringId = 3048
+  }
+end
+local emConfig = storage.emergencyEquip
+if emConfig.manaPercent == nil then emConfig.manaPercent = 15 end
+if emConfig.ssaId == nil then emConfig.ssaId = 3081 end
+if emConfig.ringId == nil then emConfig.ringId = 3048 end
+
+local emUi = setupUI([[
+Panel
+  height: 68
+  margin-top: 4
+  margin-left: 1
+  margin-right: 1
+
+  BotSwitch
+    id: switch
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    height: 18
+    text-align: center
+    !text: tr('Auto SSA + Might Ring')
+
+  BotItem
+    id: ssaItem
+    anchors.top: switch.bottom
+    anchors.left: parent.left
+    margin-top: 3
+    margin-left: 2
+    tooltip: Stone Skin Amulet (Slot 2 / Cuello)
+
+  BotItem
+    id: ringItem
+    anchors.top: prev.top
+    anchors.left: prev.right
+    margin-left: 4
+    tooltip: Might Ring (Slot 9 / Anillo)
+
+  Label
+    id: manaLabel
+    anchors.verticalCenter: prev.verticalCenter
+    anchors.left: prev.right
+    margin-left: 6
+    font: cipsoftFont
+    text: MP <
+
+  TextEdit
+    id: manaPercent
+    anchors.verticalCenter: prev.verticalCenter
+    anchors.left: prev.right
+    margin-left: 3
+    width: 28
+    height: 18
+    font: cipsoftFont
+    text-align: center
+
+  Label
+    id: percentSign
+    anchors.verticalCenter: prev.verticalCenter
+    anchors.left: prev.right
+    margin-left: 2
+    font: cipsoftFont
+    text: %
+
+  Label
+    id: status
+    anchors.top: ssaItem.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    margin-top: 3
+    font: cipsoftFont
+    text-align: center
+    color: #a0a0a0
+    text: [OFF] Inactivo
+]])
+
+local lastStatusText = ""
+local function updateStatus()
+  if not emUi or not emUi.status then return end
+  if not emConfig.enabled then
+    if lastStatusText ~= "OFF" then
+      emUi.status:setText("[OFF] Inactivo")
+      emUi.status:setColor("#a0a0a0")
+      lastStatusText = "OFF"
+    end
+  else
+    local mp = manapercent() or 100
+    local threshold = tonumber(emConfig.manaPercent) or 15
+    if mp < threshold then
+      local text = string.format("[!] EMERGENCIA (<%d%% MP)", threshold)
+      if lastStatusText ~= text then
+        emUi.status:setText(text)
+        emUi.status:setColor("#ff4444")
+        lastStatusText = text
+      end
+    else
+      local text = string.format("[ON] Monitoreando (MP: %d%%)", mp)
+      if lastStatusText ~= text then
+        emUi.status:setText(text)
+        emUi.status:setColor("#55ff55")
+        lastStatusText = text
+      end
+    end
+  end
+end
+
+emUi.switch:setOn(emConfig.enabled)
+emUi.switch.onClick = function(widget)
+  emConfig.enabled = not emConfig.enabled
+  widget:setOn(emConfig.enabled)
+  updateStatus()
+end
+
+emUi.ssaItem:setItemId(emConfig.ssaId or 3081)
+emUi.ssaItem.onItemChange = function(widget)
+  emConfig.ssaId = widget:getItemId()
+end
+
+emUi.ringItem:setItemId(emConfig.ringId or 3048)
+emUi.ringItem.onItemChange = function(widget)
+  emConfig.ringId = widget:getItemId()
+end
+
+emUi.manaPercent:setText(tostring(emConfig.manaPercent or 15))
+emUi.manaPercent.onTextChange = function(widget, text)
+  local val = tonumber(text)
+  if val then
+    emConfig.manaPercent = val
+  end
+end
+
+updateStatus()
+
 local lastMethod = {}
 
 local function equipItemDirect(item, slot)
@@ -110,45 +254,114 @@ local function equipItemDirect(item, slot)
   return true
 end
 
+local function findItemById(id)
+  if not id or id <= 0 then return nil end
+  local containers = g_game.getContainers()
+  for _, container in pairs(containers) do
+    for _, item in ipairs(container:getItems()) do
+      if item:getId() == id then
+        return item
+      end
+    end
+  end
+  if findItem then
+    local it = findItem(id)
+    if it then return it end
+  end
+  return nil
+end
+
+-- Macro de emergencia rapido (80ms) para respuesta inmediata bajo fuego
+macro(80, function()
+  if not emConfig.enabled then return end
+  if not g_game.isOnline() then return end
+  if isInPz and isInPz() then return end
+
+  local mp = manapercent() or 100
+  local threshold = tonumber(emConfig.manaPercent) or 15
+
+  updateStatus()
+
+  if mp >= threshold then
+    return
+  end
+
+  -- Modo emergencia: MP < threshold
+  -- 1. Prioridad Cuello: Stone Skin Amulet (Slot 2)
+  local ssaId = emConfig.ssaId or 3081
+  if ssaId > 0 then
+    local currentNeck = getSlot(2)
+    if not currentNeck or currentNeck:getId() ~= ssaId then
+      local ssaItem = findItemById(ssaId)
+      if ssaItem then
+        equipItemDirect(ssaItem, 2)
+        delay(100)
+        return
+      end
+    end
+  end
+
+  -- 2. Dedo: Might Ring (Slot 9)
+  local ringId = emConfig.ringId or 3048
+  if ringId > 0 then
+    local currentRing = getSlot(9)
+    if not currentRing or currentRing:getId() ~= ringId then
+      local ringItem = findItemById(ringId)
+      if ringItem then
+        equipItemDirect(ringItem, 9)
+        delay(100)
+        return
+      end
+    end
+  end
+end)
+
 macro(250, function()
+  local isEmergencyActive = emConfig and emConfig.enabled and ((manapercent() or 100) < (tonumber(emConfig.manaPercent) or 15))
+
   for index, autoEquip in ipairs(storage.autoEquip) do
     if autoEquip.on and autoEquip.slot and autoEquip.slot > 0 then
-      local id1 = autoEquip.item1 or 0
-      local id2 = autoEquip.item2 or 0
+      -- Si la emergencia de SSA/Might Ring esta activa, no interferir con los slots 2 (Neck) y 9 (Finger)
+      if isEmergencyActive and (autoEquip.slot == 2 or autoEquip.slot == 9) then
+        -- Saltear autoEquip normal en estos slots para priorizar SSA y Might Ring
+      else
+        local id1 = autoEquip.item1 or 0
+        local id2 = autoEquip.item2 or 0
 
-      -- Procesar solo si hay al menos un item seleccionado en alguno de los dos slots
-      if id1 > 0 or id2 > 0 then
-        local slotItem = getSlot(autoEquip.slot)
+        -- Procesar solo si hay al menos un item seleccionado en alguno de los dos slots
+        if id1 > 0 or id2 > 0 then
+          local slotItem = getSlot(autoEquip.slot)
 
-        -- Si el slot no tiene el item deseado (o esta vacio o tiene un item diferente)
-        if not slotItem or not isMatching(slotItem:getId(), id1, id2) then
-          local itemToEquip = nil
-          local containers = g_game.getContainers()
+          -- Si el slot no tiene el item deseado (o esta vacio o tiene un item diferente)
+          if not slotItem or not isMatching(slotItem:getId(), id1, id2) then
+            local itemToEquip = nil
+            local containers = g_game.getContainers()
 
-          -- 1. Buscar en mochilas abiertas
-          for _, container in pairs(containers) do
-            for __, item in ipairs(container:getItems()) do
-              if isMatching(item:getId(), id1, id2) then
-                itemToEquip = item
-                break
+            -- 1. Buscar en mochilas abiertas
+            for _, container in pairs(containers) do
+              for __, item in ipairs(container:getItems()) do
+                if isMatching(item:getId(), id1, id2) then
+                  itemToEquip = item
+                  break
+                end
+              end
+              if itemToEquip then break end
+            end
+
+            -- 2. Respaldo por findItem si no se encontro en el primer barrido
+            if not itemToEquip then
+              if id1 > 0 and findItem(id1) then
+                itemToEquip = findItem(id1)
+              elseif id2 > 0 and findItem(id2) then
+                itemToEquip = findItem(id2)
               end
             end
-            if itemToEquip then break end
-          end
 
-          -- 2. Respaldo por findItem si no se encontro en el primer barrido
-          if not itemToEquip then
-            if id1 > 0 and findItem(id1) then
-              itemToEquip = findItem(id1)
-            elseif id2 > 0 and findItem(id2) then
-              itemToEquip = findItem(id2)
+            if itemToEquip then
+              equipItemDirect(itemToEquip, autoEquip.slot)
+              delay(400) -- Evitar spam de paquetes
+              return
             end
-          end
-
-          if itemToEquip then
-            equipItemDirect(itemToEquip, autoEquip.slot)
-            delay(400) -- Evitar spam de paquetes
-            return
           end
         end
       end

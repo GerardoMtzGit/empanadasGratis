@@ -34,6 +34,7 @@ local luaFiles = {
   "HealBot",
   "icons_tab",
   "cooldown_hud",
+  "sd_only",
   "new_healer",
   "AttackBot", -- last of major modules
   "ingame_editor",
@@ -55,6 +56,7 @@ local luaFiles = {
   "npc_talk",
   "xeno_menu",
   "hold_target",
+  "refill_hud",
   "cavebot_control_panel"
 }
 

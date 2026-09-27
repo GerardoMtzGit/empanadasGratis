@@ -3,6 +3,19 @@ vBot.lastLabel = ""
 local oldTibia = g_game.getClientVersion() < 960
 local nextTile = nil
 
+local function tileHasCreature(tile)
+  if not tile then return false end
+  local ok, creatures = pcall(function() return tile:getCreatures() end)
+  if ok and type(creatures) == "table" and #creatures > 0 then
+    return true
+  end
+  local ok2, top = pcall(function() return tile:getTopCreature() end)
+  if ok2 and top then
+    return true
+  end
+  return false
+end
+
 local noPath = 0
 
 -- antistuck f()
@@ -46,7 +59,7 @@ onTextMessage(function(mode, text)
   local tiles = getNearTiles(pos())
 
   for i, tile in ipairs(tiles) do
-    if not tile:hasCreature() and tile:isWalkable() and #tile:getItems() > 9 then
+    if not tileHasCreature(tile) and tile:isWalkable() and #tile:getItems() > 9 then
       local topThing = tile:getTopThing()
       if not isInPz() then
         return useWith(3197, tile:getTopThing()) -- disintegrate
@@ -288,18 +301,10 @@ CaveBot.registerAction("goto", "green", function(value, retries, prev)
   nextPosF = nil
   nextPos = nil
   
-  if CaveBot.Config.get("mapClick") then
-    if retries >= 5 then
-      noPath = noPath + 1
-      pathfinder()
-      return false -- tried 5 times, can't get there
-    end
-  else
-    if retries >= 100 then
-      noPath = noPath + 1
-      pathfinder()
-      return false -- tried 100 times, can't get there
-    end  
+  if retries >= 100 then
+    noPath = noPath + 1
+    pathfinder()
+    return false -- tried 100 times, can't get there
   end
 
   local precision = tonumber(pos[1][5])
@@ -359,7 +364,7 @@ CaveBot.registerAction("goto", "green", function(value, retries, prev)
   
       local tile = g_map.getTile(nextPos)
       if tile then
-          if tile:hasCreature() then
+          if tileHasCreature(tile) then
               local creature = tile:getCreatures()[1]
               local hppc = creature:getHealthPercent()
               if creature:isMonster() and (hppc and hppc > 0) and (oldTibia or creature:getType() < 3) then
@@ -405,12 +410,6 @@ CaveBot.registerAction("goto", "green", function(value, retries, prev)
     if CaveBot.walkTo(pos, 50, { ignoreNonPathable = true, precision = precison, allowUnseen = true, allowOnlyVisibleTiles = false }) then
       return "retry"
     end    
-  end
-  
-  if not CaveBot.Config.get("mapClick") and retries >= 5 then
-    noPath = noPath + 1
-    pathfinder()
-    return false
   end
   
   if CaveBot.Config.get("skipBlocked") then

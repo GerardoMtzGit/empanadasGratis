@@ -80,6 +80,7 @@ cavebotMacro = macro(20, function()
       actionRetries = 0
       prevActionResult = true
     end
+
     local nextAction = ui.list:getChildIndex(currentAction) + 1
     if nextAction > actions then
       nextAction = 1
@@ -88,8 +89,15 @@ cavebotMacro = macro(20, function()
     
     -- If the action succeeded (e.g. waypoint reached, label, gotolabel),
     -- clear any leftover delay and immediately evaluate the next action with 0 delay!
+    -- EXCEPTION: if dynamic lure is engaged (2+ monsters), apply lure delay between waypoints.
     if isSuccess then
-      cavebotMacro.delay = nil
+      local effectiveDelay = (CaveBot.getEffectiveMapClickDelay and CaveBot.getEffectiveMapClickDelay()) or 0
+      if effectiveDelay > 0 then
+        CaveBot.delay(effectiveDelay)
+        break -- don't chain next waypoint yet, wait for delay
+      else
+        cavebotMacro.delay = nil
+      end
     else
       break
     end
