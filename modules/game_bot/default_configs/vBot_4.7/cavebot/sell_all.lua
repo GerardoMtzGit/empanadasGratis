@@ -104,7 +104,6 @@ local function switchToSellTab()
   local win = getNpcTradeWindow()
   if not win then return end
 
-  -- Sync npcWindow variable so modules.game_npctrade doesn't fail
   if modules.game_npctrade then modules.game_npctrade.npcWindow = win end
   if modules.game_npctrader then modules.game_npctrader.npcWindow = win end
 
@@ -189,22 +188,22 @@ CaveBot.Extensions.SellAll.setup = function()
       end
     end
 
-    -- Timeout protection
-    if retries >= 4 then
-      warn("CaveBot[SellAll]: Timeout limit reached, closing trade window and proceeding.")
+    -- Timeout protection: after 25 retries, finish and close
+    if retries >= 25 then
+      warn("CaveBot[SellAll]: Completed max rounds, closing trade window and proceeding.")
       safeCloseTrade()
       delay(800)
       CaveBot.delay(800)
       return true
     end
 
-    delay(300)
-    CaveBot.delay(300)
+    delay(200)
+    CaveBot.delay(200)
     if npc and not CaveBot.ReachNPC(npcName) then
       return "retry"
     end
 
-    -- Open trade window if not open
+    -- If trade is not open yet: open it and wait 7 seconds
     if not isTradeWindowOpen() then
       warn("CaveBot[SellAll]: Saying hi/trade to " .. tostring(npcName) .. ", waiting 7s for trade window...")
       CaveBot.OpenNpcTrade()
@@ -219,68 +218,71 @@ CaveBot.Extensions.SellAll.setup = function()
     if modules.game_npctrade then modules.game_npctrade.npcWindow = win end
     if modules.game_npctrader then modules.game_npctrader.npcWindow = win end
 
-    warn("CaveBot[SellAll]: Trade window is open! Switching to 'Vender' tab...")
+    -- Switch to "Vender" tab on each pass to ensure it stays active
     switchToSellTab()
-    delay(500)
-    CaveBot.delay(500)
 
-    -- Also say "yes" in case of autoloot bag
+    -- Sell pass:
+    warn("CaveBot[SellAll]: Sell pass (round " .. retries .. " of 21)...")
+
+    -- 1. Try native sellAll
     pcall(function()
-      if NPC and NPC.say then NPC.say("yes") end
-      say("yes")
+      if modules.game_npctrade and modules.game_npctrade.sellAll then
+        modules.game_npctrade.sellAll(wait, val)
+      end
+      if modules.game_npctrader and modules.game_npctrader.sellAll then
+        modules.game_npctrader.sellAll(wait, val)
+      end
+      if NPC and NPC.sellAll then
+        NPC.sellAll()
+      end
     end)
 
-    warn("CaveBot[SellAll]: Executing 12 sell passes to sell all items...")
-    for round = 1, 12 do
-      -- 1. Native module sellAll
-      pcall(function()
-        if modules.game_npctrade and modules.game_npctrade.sellAll then
-          modules.game_npctrade.sellAll(wait, val)
-        end
-        if modules.game_npctrader and modules.game_npctrader.sellAll then
-          modules.game_npctrader.sellAll(wait, val)
-        end
-        if NPC and NPC.sellAll then
-          NPC.sellAll()
-        end
-      end)
-
-      -- 2. Direct inventory selling via NPC.sell
-      pcall(function()
-        local sellItems = (NPC and NPC.getSellItems and NPC.getSellItems()) or {}
-        for _, entry in ipairs(sellItems) do
-          local isException = false
-          for i = 2, #val do
-            if val[i] == entry.id or val[i] == entry.name then
-              isException = true
-              break
-            end
-          end
-          if not isException then
-            local qty = 0
-            pcall(function() qty = NPC.getSellQuantity(entry.item) end)
-            if not qty or qty <= 0 then
-              pcall(function() qty = NPC.getSellQuantity(entry.id) end)
-            end
-            if qty and qty > 0 then
-              NPC.sell(entry.item, qty, true)
-            end
+    -- 2. Direct inventory selling for all items the NPC buys
+    pcall(function()
+      local sellItems = (NPC and NPC.getSellItems and NPC.getSellItems()) or {}
+      for _, entry in ipairs(sellItems) do
+        local isException = false
+        for i = 2, #val do
+          if val[i] == entry.id or val[i] == entry.name then
+            isException = true
+            break
           end
         end
-      end)
+        if not isException then
+          local qty = 0
+          pcall(function() qty = NPC.getSellQuantity(entry.item) end)
+          if not qty or qty <= 0 then
+            pcall(function() qty = NPC.getSellQuantity(entry.id) end)
+          end
+          if qty and qty > 0 then
+            NPC.sell(entry.item, qty, true)
+          end
+        end
+      end
+    end)
 
-      delay(120)
+    -- Also say "yes" in case of autoloot bag
+    if retries == 1 then
+      pcall(function()
+        if NPC and NPC.say then NPC.say("yes") end
+        say("yes")
+      end)
     end
 
-    local afterDelay = wait and 1800 or 1000
-    delay(afterDelay)
-    CaveBot.delay(afterDelay)
+    -- If we have completed 21 sell passes (retries 1 to 21):
+    if retries >= 21 then
+      warn("CaveBot[SellAll]: Finished 21 sell passes! Closing trade window and continuing.")
+      safeCloseTrade()
+      delay(800)
+      CaveBot.delay(800)
+      return true
+    end
 
-    warn("CaveBot[SellAll]: All 12 sell passes completed! Closing trade window.")
-    safeCloseTrade()
-    delay(600)
-    CaveBot.delay(600)
-    return true
+    -- Wait 400ms between each sell round so the server processes each packet safely
+    local passDelay = 400
+    delay(passDelay)
+    CaveBot.delay(passDelay)
+    return "retry"
   end
 
   CaveBot.Actions["sellall"] = nil

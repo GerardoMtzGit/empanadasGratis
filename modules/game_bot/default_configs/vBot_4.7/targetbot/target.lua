@@ -37,11 +37,17 @@ local oldTibia = g_game.getClientVersion() < 960
 
 -- main loop, controlled by config
 targetbotMacro = macro(100, function()
+  -- If currently attacking a familiar or summon, cancel attack immediately
+  local curAttacking = g_game.getAttackingCreature()
+  if curAttacking and isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(curAttacking) then
+    g_game.cancelAttackAndFollow()
+  end
+
   local pos = player:getPosition()
   local specs = g_map.getSpectatorsInRange(pos, false, 6, 6) -- 12x12 area
   local creatures = 0
   for i, spec in ipairs(specs) do
-    if spec:isMonster() then
+    if spec:isMonster() and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(spec)) then
       creatures = creatures + 1
     end
   end
@@ -56,7 +62,7 @@ targetbotMacro = macro(100, function()
   local highestPriorityParams = nil
   for i, creature in ipairs(creatures) do
     local hppc = creature:getHealthPercent()
-    if hppc and hppc > 0 then
+    if hppc and hppc > 0 and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(creature)) then
       local path = findPath(player:getPosition(), creature:getPosition(), 7, {ignoreLastCreature=true, ignoreNonPathable=true, ignoreCost=true, ignoreCreatures=true})
       if (creature:isMonster() or (not creature:isPlayer() and not creature:isNpc())) and (oldTibia or creature:getType() < 3) and path then
         local params = TargetBot.Creature.calculateParams(creature, path) -- return {craeture, config, danger, priority}
@@ -81,7 +87,7 @@ targetbotMacro = macro(100, function()
     local closestDist = 999
     local fallbackCreature = nil
     for _, creature in ipairs(specs) do
-      if not creature:isLocalPlayer() and not creature:isNpc() and not creature:isPlayer() then
+      if not creature:isLocalPlayer() and not creature:isNpc() and not creature:isPlayer() and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(creature)) then
         local isMob = creature:isMonster() or (not creature:isPlayer() and not creature:isNpc())
         local hppc = creature:getHealthPercent()
         if isMob and hppc and hppc > 0 and creature:getPosition().z == pPos.z then

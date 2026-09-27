@@ -53,7 +53,14 @@ end
 
 TargetBot.Creature.getConfigs = function(creature)
   if not creature then return {} end
+  if isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(creature) then return {} end
   local name = creature:getName():trim():lower()
+  if name:find("familiar") or name:find("summon") or name:find("sumon") then return {} end
+  if name == "grovebeast" or name == "feuerhexe" or name == "skullfrost" or name == "phantom" then return {} end
+  if creature.getType then
+    local ct = creature:getType()
+    if ct == 3 or ct == 4 then return {} end
+  end
   -- this function may be slow, so it will be using cache
   if TargetBot.Creature.configsCache[name] then
     return TargetBot.Creature.configsCache[name]

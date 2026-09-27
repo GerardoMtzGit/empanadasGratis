@@ -11,7 +11,7 @@ end)
 
 macro(100, "Hold Target", function()
     -- if attacking then save it as target, but check pos z in case of marking by mistake on other floor
-    if target() and target():getPosition().z == posz() and not target():isNpc() then
+    if target() and target():getPosition().z == posz() and not target():isNpc() and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(target())) then
         targetID = target():getId()
     elseif not target() then
         -- there is no saved data, do nothing
@@ -22,7 +22,7 @@ macro(100, "Hold Target", function()
             local sameFloor = spec:getPosition().z == posz()
             local oldTarget = spec:getId() == targetID
             
-            if sameFloor and oldTarget and spec:getHealthPercent() > 0 then
+            if sameFloor and oldTarget and spec:getHealthPercent() > 0 and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(spec)) then
                 attack(spec)
             end
         end

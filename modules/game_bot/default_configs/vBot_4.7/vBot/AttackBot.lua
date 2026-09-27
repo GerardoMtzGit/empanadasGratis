@@ -1081,7 +1081,7 @@ function getMonstersInArea(category, posOrCreature, pattern, minHp, maxHp, safeP
       local specHp = spec:getHealthPercent()
       local name = spec:getName():lower()
       monsters = spec:isMonster() and specHp >= minHp and specHp <= maxHp and (#t == 0 or table.find(t, name)) and
-                 (g_game.getClientVersion() < 960 or spec:getType() < 3) and monsters + 1 or monsters
+                 (g_game.getClientVersion() < 960 or spec:getType() < 3) and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(spec)) and monsters + 1 or monsters
     end
     return monsters
   end
@@ -1091,7 +1091,7 @@ function getMonstersInArea(category, posOrCreature, pattern, minHp, maxHp, safeP
         local specHp = spec:getHealthPercent()
         local name = spec:getName():lower()
         monsters = spec:isMonster() and specHp >= minHp and specHp <= maxHp and (#t == 0 or table.find(t, name)) and
-                   (g_game.getClientVersion() < 960 or spec:getType() < 3) and monsters + 1 or monsters
+                   (g_game.getClientVersion() < 960 or spec:getType() < 3) and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(spec)) and monsters + 1 or monsters
       end
   end
 
@@ -1130,6 +1130,7 @@ end
 -- support function covered, now the main loop
 macro(100, function()
   if not currentSettings.enabled then return end
+  if storage.sdOnly and storage.sdOnly.enabled then return end
   if #currentSettings.attackTable == 0 or isInPz() or not target() or modules.game_cooldown.isGroupCooldownIconActive(1) then return end
 
   if currentSettings.Training and target() and target():getName():lower():find("training") then return end

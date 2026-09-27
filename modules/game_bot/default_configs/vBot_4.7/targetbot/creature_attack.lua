@@ -108,6 +108,13 @@ TargetBot.Creature.attack = function(params, targets, isLooting) -- params {conf
   local config = params.config
   local creature = params.creature
   
+  if not creature or (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(creature)) then
+    if g_game.getAttackingCreature() == creature then
+      g_game.cancelAttackAndFollow()
+    end
+    return
+  end
+
   if g_game.getAttackingCreature() ~= creature then
     g_game.attack(creature)
   end
@@ -122,10 +129,10 @@ TargetBot.Creature.attack = function(params, targets, isLooting) -- params {conf
     local creatures = g_map.getSpectatorsInRange(player:getPosition(), false, config.groupAttackRadius, config.groupAttackRadius)
     local playersAround = false
     local monsters = 0
-    for _, creature in ipairs(creatures) do
-      if not creature:isLocalPlayer() and creature:isPlayer() and (not config.groupAttackIgnoreParty or creature:getShield() <= 2) then
+    for _, c in ipairs(creatures) do
+      if not c:isLocalPlayer() and c:isPlayer() and (not config.groupAttackIgnoreParty or c:getShield() <= 2) then
         playersAround = true
-      elseif creature:isMonster() then
+      elseif c:isMonster() and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(c)) then
         monsters = monsters + 1
       end
     end
@@ -140,10 +147,10 @@ TargetBot.Creature.attack = function(params, targets, isLooting) -- params {conf
     local creatures = g_map.getSpectatorsInRange(creature:getPosition(), false, config.groupRuneAttackRadius, config.groupRuneAttackRadius)
     local playersAround = false
     local monsters = 0
-    for _, creature in ipairs(creatures) do
-      if not creature:isLocalPlayer() and creature:isPlayer() and (not config.groupAttackIgnoreParty or creature:getShield() <= 2) then
+    for _, c in ipairs(creatures) do
+      if not c:isLocalPlayer() and c:isPlayer() and (not config.groupAttackIgnoreParty or c:getShield() <= 2) then
         playersAround = true
-      elseif creature:isMonster() then
+      elseif c:isMonster() and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(c)) then
         monsters = monsters + 1
       end
     end

@@ -19,7 +19,8 @@ if not storage[panelName] then
     maxRange = 6,
     autoTarget = true,   -- Auto-apuntar a donde pegue a mas monstruos
     safePvp = true,
-    ignoreParty = true
+    ignoreParty = true,
+    prioritizeMana = true -- Priorizar tener >20% de mana antes de tirar runa/spell
   }
 end
 
@@ -41,6 +42,9 @@ if config.singleApproach == nil then
 end
 if config.singleApproachDist == nil then
   config.singleApproachDist = 3
+end
+if config.prioritizeMana == nil then
+  config.prioritizeMana = true
 end
 
 -- Main UI panel in Target Tab (Placed prominently at top)
@@ -158,12 +162,13 @@ local function updateStatus()
   local onText = config.enabled and "[ON]" or "[OFF]"
   local sName = getSingleTargetName()
   local aName = getRuneShortName(config.areaRuneId)
+  local mpTag = config.prioritizeMana and " [>20%MP]" or ""
   if config.mode == 2 then
-    ui.status:setText(string.format("%s %s (%s) [%dms]", onText, modeText, sName, config.delay or 201))
+    ui.status:setText(string.format("%s %s (%s)%s [%dms]", onText, modeText, sName, mpTag, config.delay or 201))
   elseif config.mode == 3 then
-    ui.status:setText(string.format("%s %s (%s) [%dms]", onText, modeText, aName, config.delay or 201))
+    ui.status:setText(string.format("%s %s (%s)%s [%dms]", onText, modeText, aName, mpTag, config.delay or 201))
   else
-    ui.status:setText(string.format("%s %s (%s/%s >=%d) [%dms]", onText, modeText, sName, aName, config.minMonsters or 2, config.delay or 201))
+    ui.status:setText(string.format("%s %s (%s/%s >=%d)%s [%dms]", onText, modeText, sName, aName, config.minMonsters or 2, mpTag, config.delay or 201))
   end
   if config.enabled then
     ui.status:setColor("#00ff00")
@@ -311,6 +316,9 @@ runeWindow.delayLabel:setText("Delay entre Runas: " .. tostring(config.delay or 
 runeWindow.singleApproach:setChecked(config.singleApproach)
 runeWindow.autoTarget:setChecked(config.autoTarget)
 runeWindow.safePvp:setChecked(config.safePvp)
+if runeWindow.prioritizeMana then
+  runeWindow.prioritizeMana:setChecked(config.prioritizeMana)
+end
 
 -- Event listeners con proteccion completa contra recursividad infinita
 runeWindow.modeCombo.onOptionChange = function(widget, option, data)
@@ -488,6 +496,14 @@ runeWindow.safePvp.onClick = function(widget)
   widget:setChecked(config.safePvp)
 end
 
+if runeWindow.prioritizeMana then
+  runeWindow.prioritizeMana.onClick = function(widget)
+    config.prioritizeMana = not config.prioritizeMana
+    widget:setChecked(config.prioritizeMana)
+    updateStatus()
+  end
+end
+
 runeWindow.closeButton.onClick = function()
   runeWindow:hide()
 end
@@ -511,7 +527,7 @@ end
 
 updateStatus()
 
--- Determine if creature is a valid monster target (STRICTLY excludes players)
+-- Determine if creature is a valid monster target (STRICTLY excludes players and familiars/summons)
 local function isTargetableCreature(spec)
   if not spec or spec:isLocalPlayer() then return false end
   if spec:isPlayer() then return false end -- NEVER target any player
@@ -520,6 +536,26 @@ local function isTargetableCreature(spec)
   if not p or p.z ~= posz() then return false end
   local hp = spec:getHealthPercent()
   if not hp or hp <= 0 then return false end
+
+  -- Exclude summons and familiars (Druid Familiar, Sorcerer Familiar, etc.)
+  if isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(spec) then
+    return false
+  end
+  local sName = spec.getName and tostring(spec:getName()):lower():trim() or ""
+  if sName:find("familiar") or sName:find("summon") or sName:find("sumon") then
+    return false
+  end
+  if sName == "grovebeast" or sName == "feuerhexe" or sName == "skullfrost" or sName == "phantom" then
+    return false
+  end
+  if spec.getType then
+    local st = spec:getType()
+    if st == 3 or st == 4 then return false end
+  end
+  if spec.isSummon and spec:isSummon() then return false end
+  if spec.isPet and spec:isPet() then return false end
+  if spec.getMaster and spec:getMaster() ~= nil then return false end
+  if spec.isPartyMember and spec:isPartyMember() then return false end
 
   if spec:isMonster() then return true end
   if not spec:isPlayer() and not spec:isNpc() then return true end
@@ -530,6 +566,11 @@ end
 -- Reliable rune caster: uses hotkey inventory first, falls back to open backpacks
 local function shootRune(runeId, targetThing)
   if not runeId or runeId <= 0 or not targetThing then return false end
+
+  -- Priorizar tener >20% de mana antes de tirar runa
+  if config.prioritizeMana and (manapercent() or 100) <= 20 then
+    return false
+  end
 
   -- Safeguard: ensure creature target is alive and valid
   if targetThing.isCreature and targetThing:isCreature() then
@@ -634,14 +675,19 @@ local function getBestAreaTarget(aliveMonsters, currentTarget)
     if distFromPlayer <= (config.maxRange or 6) then
       local tile = g_map.getTile(cp)
       if tile and tile:canShoot() then
-        -- PVP Safe check: ensure no non-party player is hit by this blast
+        -- PVP / Familiar Safe check: ensure no non-party player or summon/familiar is hit by this blast
         local pvpBlocked = false
         if config.safePvp then
           for _, spec in ipairs(allSpecs) do
-            if spec:isPlayer() and not spec:isLocalPlayer() and spec:getPosition().z == pz then
+            if not spec:isLocalPlayer() and spec:getPosition().z == pz then
               local sp = spec:getPosition()
               if isBlastHit(cp.x, cp.y, sp.x, sp.y) then
-                if not config.ignoreParty or spec:getShield() <= 2 then
+                if spec:isPlayer() then
+                  if not config.ignoreParty or spec:getShield() <= 2 then
+                    pvpBlocked = true
+                    break
+                  end
+                elseif not isTargetableCreature(spec) then
                   pvpBlocked = true
                   break
                 end
@@ -690,6 +736,9 @@ macro(50, function()
   if currentTarget then
     local tPos = currentTarget:getPosition()
     if not tPos or tPos.z ~= pz or currentTarget:getHealthPercent() <= 0 or currentTarget:isPlayer() or not isTargetableCreature(currentTarget) then
+      if not isTargetableCreature(currentTarget) then
+        g_game.cancelAttackAndFollow()
+      end
       currentTarget = nil
     end
   end
@@ -718,7 +767,13 @@ end)
 -- Main rune and spell casting loop
 macro(20, function()
   if not config.enabled then return end
+  if storage.sdOnly and storage.sdOnly.enabled then return end
   if isInPz() then return end
+
+  -- Priorizar tener >20% de mana antes de tirar avalanche o cualquier runa / spell
+  if config.prioritizeMana and (manapercent() or 100) <= 20 then
+    return
+  end
 
   local currentNow = now
   local delayMs = tonumber(config.delay) or 201
@@ -745,6 +800,9 @@ macro(20, function()
   if currentTarget then
     local tPos = currentTarget:getPosition()
     if not tPos or tPos.z ~= pz or currentTarget:getHealthPercent() <= 0 or currentTarget:isPlayer() or not isTargetableCreature(currentTarget) then
+      if not isTargetableCreature(currentTarget) then
+        g_game.cancelAttackAndFollow()
+      end
       currentTarget = nil
     end
   end
