@@ -417,12 +417,14 @@ setDefaultTab("Tools")
 UI.Separator()
 UI.Label("Refill Time Estimator (HUD Superior Derecho)")
 
-local switchWidget = UI.Switch(function(widget, isOn)
-  config.enabled = isOn
+local switchWidget = addSwitch("refillHudEnable", "Show Refill HUD", function(widget)
+  widget:setOn(not widget:isOn())
+  config.enabled = widget:isOn()
   if hudWidget then
-    hudWidget:setVisible(isOn)
+    hudWidget:setVisible(config.enabled)
   end
-end, "Show Refill HUD", config.enabled)
+end)
+switchWidget:setOn(config.enabled)
 
 alertBtnWidget = UI.Button("Apagar Alarma Sonora (Activa)", function(widget)
   config.soundAlert = not config.soundAlert
@@ -432,27 +434,33 @@ alertBtnWidget = UI.Button("Apagar Alarma Sonora (Activa)", function(widget)
   updateMuteState()
 end)
 
-local compactWidget = UI.CheckBox(function(widget, checked)
-  config.compact = checked
+local compactWidget = addSwitch("refillHudCompact", "Compact Mode", function(widget)
+  widget:setOn(not widget:isOn())
+  config.compact = widget:isOn()
   if hudWidget then
-    hudWidget.rowsContainer:setVisible(not checked)
-    hudWidget:setHeight(checked and 46 or 148)
+    hudWidget.rowsContainer:setVisible(not config.compact)
+    hudWidget:setHeight(config.compact and 46 or 148)
   end
-end, "Compact Mode", config.compact)
+end)
+compactWidget:setOn(config.compact)
 
-alertWidget = UI.CheckBox(function(widget, checked)
-  config.soundAlert = checked
+alertWidget = addSwitch("refillHudSound", "Sound Alert (< 5 min)", function(widget)
+  widget:setOn(not widget:isOn())
+  config.soundAlert = widget:isOn()
   if not config.soundAlert then
     pcall(function() stopSound() end)
   end
   updateMuteState()
-end, "Sound Alert (< 5 min)", config.soundAlert)
+end)
+alertWidget:setOn(config.soundAlert)
 
 updateMuteState()
 
-local lockWidget = UI.CheckBox(function(widget, checked)
-  config.lockPosition = checked
-end, "Lock Position (Hold Ctrl to Drag)", config.lockPosition)
+local lockWidget = addSwitch("refillHudLock", "Lock Position (Hold Ctrl to Drag)", function(widget)
+  widget:setOn(not widget:isOn())
+  config.lockPosition = widget:isOn()
+end)
+lockWidget:setOn(config.lockPosition)
 
 UI.Button("Reset Hunt Stats", function()
   resetHuntStats()
