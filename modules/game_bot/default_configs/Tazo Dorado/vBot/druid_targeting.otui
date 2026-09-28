@@ -15,9 +15,20 @@ DruidTargetingWindow < MainWindow
     id: ulusCdTitle
     anchors.top: parent.top
     anchors.right: parent.right
+    width: 80
     text: Cooldown (ms):
     font: cipsoftFont
     color: #a0a0a0
+
+  TextEdit
+    id: ulusCooldown
+    anchors.top: ulusCdTitle.bottom
+    anchors.right: parent.right
+    width: 80
+    height: 20
+    margin-top: 3
+    font: cipsoftFont
+    tooltip: Cooldown en milisegundos (ej: 4000)
 
   TextEdit
     id: ulusSpell
@@ -28,15 +39,6 @@ DruidTargetingWindow < MainWindow
     margin-top: 3
     height: 20
     font: cipsoftFont
-
-  TextEdit
-    id: ulusCooldown
-    anchors.top: ulusSpell.top
-    anchors.right: parent.right
-    width: 80
-    height: 20
-    font: cipsoftFont
-    tooltip: Cooldown en milisegundos (ej: 4000)
 
   Label
     id: ulusModeLabel
