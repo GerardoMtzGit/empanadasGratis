@@ -204,6 +204,7 @@ addItem("scythe", "Scythe Item", 9596, leftPanel, "This item will be used in var
 addCheckBox("pathfinding", "CaveBot Pathfinding", true, leftPanel, "Cavebot will automatically search for first reachable waypoint after missing 10 goto's.")
 addScrollBar("talkDelay", "Global NPC Talk Delay", 0, 2000, 1000, leftPanel, "Breaks between each talk action in cavebot (time in miliseconds).")
 addScrollBar("looting", "Max Loot Distance", 0, 50, 40, leftPanel, "Every loot corpse futher than set distance (in sqm) will be ignored and forgotten.")
+addScrollBar("lootDelay", "Loot Delay", 0, 1000, 200, leftPanel, "Wait time for loot container to open. Lower value means faster looting. \n WARNING if you are having looting issues(e.g. container is locked in closing/opnening), increase this value.")
 addScrollBar("huntRoutes", "Hunting Rounds Limit", 0, 300, 50, leftPanel, "Round limit for supply check, if character already made more rounds than set, on next supply check will return to city.")
 addScrollBar("killUnder", "Kill monsters below", 0, 100, 1, leftPanel, "Force TargetBot to kill added creatures when they are below set percentage of health - will ignore all other TargetBot settings.")
 addScrollBar("gotoMaxDistance", "Max GoTo Distance", 0, 127, 30, leftPanel, "Maximum distance to next goto waypoint for the bot to try to reach.")
@@ -698,7 +699,7 @@ addCheckBox("nextBackpack", "Open Next Loot Container", true, leftPanel, "Auto o
         if table.find(lootCotaniersIds, cId) then
           for _, item in ipairs(container:getItems()) do
             if item:getId() == cId then
-              return g_game.open(item, container)
+              return g_game.open(item)
             end
           end
         end
@@ -742,12 +743,19 @@ end
 -- =========================================================================
 -- Ver ID de objetos al darles Look (Show Item IDs on Look)
 -- =========================================================================
-addCheckBox("showLookId", "Show Item IDs on Look", true, rightPanel, "Show item ID in description and console when looking at objects")
+addCheckBox("showLookId", "Show Item IDs on Look", true, rightPanel, "Show item ID in description and console when looking at objects (Ctrl + Right Click)")
 if true then
   local lastLooked = nil
 
   local function resolveItemId(thing)
     if not thing then return nil end
+
+    -- 0. Si es un widget que contiene un Item (UIItem en inventario, contenedor, equipo, etc.)
+    if thing.getItem and thing:getItem() then
+      thing = thing:getItem()
+    elseif thing.item and type(thing.item) == "userdata" then
+      thing = thing.item
+    end
 
     -- 1. Si es directamente un Item
     if thing.isItem and thing:isItem() then
@@ -759,20 +767,39 @@ if true then
       return thing:getId(), count
     end
 
-    -- 2. Si es un Tile (e.g., click en mapa)
+    -- 2. Si es un Tile (click en el mapa)
     if thing.getTopLookThing then
       local lookThing = thing:getTopLookThing()
-      if lookThing and lookThing.isItem and lookThing:isItem() then
-        local count = 1
-        if lookThing.getCount then
-          local c = lookThing:getCount()
-          if type(c) == "number" and c > 1 then count = c end
+      if lookThing then
+        if lookThing.isItem and lookThing:isItem() then
+          local count = 1
+          if lookThing.getCount then
+            local c = lookThing:getCount()
+            if type(c) == "number" and c > 1 then count = c end
+          end
+          return lookThing:getId(), count
+        elseif lookThing.getId and (not lookThing.isCreature or not lookThing:isCreature()) then
+          return lookThing:getId(), 1
         end
-        return lookThing:getId(), count
       end
     end
 
-    -- 3. Si el Tile tiene items
+    -- 3. Top use thing o top thing del tile
+    if thing.getTopUseThing then
+      local useThing = thing:getTopUseThing()
+      if useThing and useThing.getId and (not useThing.isCreature or not useThing:isCreature()) then
+        return useThing:getId(), 1
+      end
+    end
+
+    if thing.getTopThing then
+      local topThing = thing:getTopThing()
+      if topThing and topThing.getId and (not topThing.isCreature or not topThing:isCreature()) then
+        return topThing:getId(), 1
+      end
+    end
+
+    -- 4. Si el Tile tiene items
     if thing.getItems then
       local items = thing:getItems()
       if type(items) == "table" and #items > 0 then
@@ -783,7 +810,7 @@ if true then
       end
     end
 
-    -- 4. Si el Tile tiene suelo (ground)
+    -- 5. Si el Tile tiene suelo (ground)
     if thing.getGround then
       local ground = thing:getGround()
       if ground and ground.getId then
@@ -791,7 +818,7 @@ if true then
       end
     end
 
-    -- 5. Respaldo generico si tiene getId() y no es criatura
+    -- 6. Respaldo generico si tiene getId() y no es criatura
     if thing.getId and (not thing.isCreature or not thing:isCreature()) then
       local id = thing:getId()
       if type(id) == "number" and id > 0 then
@@ -804,11 +831,15 @@ if true then
 
   local function isLookText(t)
     if not t or type(t) ~= "string" then return false end
-    return t:find("You see") ~= nil
-        or t:find("Ves ") ~= nil
-        or t:find("Tu ves") ~= nil
-        or t:find("Voce ve") ~= nil
-        or t:find("Voc. ve") ~= nil
+    local lower = t:lower()
+    return lower:find("you see") ~= nil
+        or lower:find("ves ") ~= nil
+        or lower:find("tu ves") ~= nil
+        or lower:find("voce ve") ~= nil
+        or lower:find("voc. ve") ~= nil
+        or lower:find("miras ") ~= nil
+        or lower:find("observas ") ~= nil
+        or lower:find("te ves ") ~= nil
   end
 
   local function formatIdTag(id, count)
@@ -839,16 +870,162 @@ if true then
     return g_game._origLookForId(thing, isHotkeyed)
   end
 
+  -- Funcion para manejar Ctrl + Click Derecho (Look + ID)
+  local function handleCtrlRightClick(mousePos)
+    if not g_keyboard.isCtrlPressed() then return false end
+
+    local child = rootWidget:recursiveGetChildByPos(mousePos)
+    local targetThing = nil
+
+    -- 1. Si el widget es o contiene un Item (contenedores, inventario, equipo, etc.)
+    if child then
+      if child.getItem and child:getItem() then
+        targetThing = child:getItem()
+      elseif child.item and type(child.item) == "userdata" then
+        targetThing = child.item
+      elseif child.getItemId and child:getItemId() > 0 then
+        local itemObj = Item.create(child:getItemId())
+        if itemObj then targetThing = itemObj end
+      end
+    end
+
+    -- 2. Si no es un item widget, checar si el click fue en el Game Map
+    if not targetThing then
+      local mapPanel = modules.game_interface and modules.game_interface.getMapPanel()
+      if mapPanel then
+        local tile = mapPanel:getTile(mousePos)
+        if tile then
+          targetThing = tile:getTopLookThing() or tile:getTopCreature() or tile:getTopUseThing() or tile:getTopThing() or tile:getGround()
+        end
+      end
+    end
+
+    -- 3. Si aun no encontramos thing, buscar si child es o tiene getThing
+    if not targetThing and child then
+      if child.getThing and child:getThing() then
+        targetThing = child:getThing()
+      end
+    end
+
+    if targetThing then
+      local id, count = resolveItemId(targetThing)
+      local name = nil
+      if targetThing.getName then
+        pcall(function() name = targetThing:getName() end)
+      end
+      if not name and targetThing.getMarketData then
+        pcall(function() name = targetThing:getMarketData().name end)
+      end
+
+      -- Registrar para el lookText del servidor
+      if id and id > 0 then
+        lastLooked = {
+          id = id,
+          count = count or 1,
+          time = g_clock.millis(),
+          pos = targetThing.getPosition and targetThing:getPosition() or nil
+        }
+      end
+
+      -- Enviar accion Look al servidor
+      pcall(function() g_game.look(targetThing) end)
+
+      -- Mostrar ID inmediatamente en pantalla y consola
+      if id and id > 0 then
+        local tag = formatIdTag(id, count)
+        local displayMsg = string.format("Look: %s %s", name or "Objeto", tag)
+
+        if modules.game_textmessage and modules.game_textmessage.displayStatusMessage then
+          modules.game_textmessage.displayStatusMessage(displayMsg)
+        end
+
+        if modules.game_console and modules.game_console.addText then
+          pcall(function()
+            modules.game_console.addText(displayMsg, MessageModes.Status or 20, "Server Log")
+          end)
+        end
+      elseif targetThing.isCreature and targetThing:isCreature() then
+        local cName = targetThing:getName()
+        if modules.game_textmessage and modules.game_textmessage.displayStatusMessage then
+          modules.game_textmessage.displayStatusMessage(string.format("Look: %s", cName or "Criatura"))
+        end
+      end
+
+      return true
+    end
+
+    return false
+  end
+
+  -- Interceptar eventos globales de mouse para Ctrl + Click Derecho
+  local rootWidget = g_ui and g_ui.getRootWidget and g_ui.getRootWidget()
+  if rootWidget then
+    if not rootWidget._origMousePressLookId then
+      rootWidget._origMousePressLookId = rootWidget.onMousePress
+    end
+    rootWidget.onMousePress = function(widget, mousePos, mouseButton)
+      if (mouseButton == MouseRightButton or mouseButton == 2) and g_keyboard.isCtrlPressed() then
+        if handleCtrlRightClick(mousePos) then
+          return true
+        end
+      end
+      if rootWidget._origMousePressLookId then
+        return rootWidget._origMousePressLookId(widget, mousePos, mouseButton)
+      end
+    end
+
+    if not rootWidget._origMouseReleaseLookId then
+      rootWidget._origMouseReleaseLookId = rootWidget.onMouseRelease
+    end
+    rootWidget.onMouseRelease = function(widget, mousePos, mouseButton)
+      if (mouseButton == MouseRightButton or mouseButton == 2) and g_keyboard.isCtrlPressed() then
+        return true
+      end
+      if rootWidget._origMouseReleaseLookId then
+        return rootWidget._origMouseReleaseLookId(widget, mousePos, mouseButton)
+      end
+    end
+  end
+
+  -- Interceptar tambien en gameMapPanel por si captura el evento directamente
+  local mapPanel = modules.game_interface and modules.game_interface.getMapPanel()
+  if mapPanel then
+    if not mapPanel._origMousePressLookId then
+      mapPanel._origMousePressLookId = mapPanel.onMousePress
+    end
+    mapPanel.onMousePress = function(widget, mousePos, mouseButton)
+      if (mouseButton == MouseRightButton or mouseButton == 2) and g_keyboard.isCtrlPressed() then
+        if handleCtrlRightClick(mousePos) then
+          return true
+        end
+      end
+      if mapPanel._origMousePressLookId then
+        return mapPanel._origMousePressLookId(widget, mousePos, mouseButton)
+      end
+    end
+
+    if not mapPanel._origMouseReleaseLookId then
+      mapPanel._origMouseReleaseLookId = mapPanel.onMouseRelease
+    end
+    mapPanel.onMouseRelease = function(widget, mousePos, mouseButton)
+      if (mouseButton == MouseRightButton or mouseButton == 2) and g_keyboard.isCtrlPressed() then
+        return true
+      end
+      if mapPanel._origMouseReleaseLookId then
+        return mapPanel._origMouseReleaseLookId(widget, mousePos, mouseButton)
+      end
+    end
+  end
+
   -- Hook a displayMessage de modules.game_textmessage si esta disponible
   if modules.game_textmessage and modules.game_textmessage.displayMessage then
     if not modules.game_textmessage._origDisplayMessageForId then
       modules.game_textmessage._origDisplayMessageForId = modules.game_textmessage.displayMessage
       modules.game_textmessage.displayMessage = function(mode, text)
-        if settings.showLookId and lastLooked and (g_clock.millis() - lastLooked.time < 3500) then
+        if settings.showLookId and lastLooked and (g_clock.millis() - lastLooked.time < 5000) then
           if isLookText(text) and not text:find("%[ID:") then
             local tag = formatIdTag(lastLooked.id, lastLooked.count)
             text = text .. " " .. tag
-            lastLooked = nil
           end
         end
         return modules.game_textmessage._origDisplayMessageForId(mode, text)
@@ -859,13 +1036,16 @@ if true then
   -- Listener a onTextMessage para asegurar actualizacion en pantalla y consola
   onTextMessage(function(mode, text)
     if not settings.showLookId then return end
-    if not lastLooked or (g_clock.millis() - lastLooked.time >= 3500) then return end
+    if not lastLooked or (g_clock.millis() - lastLooked.time >= 5000) then return end
     if not isLookText(text) then return end
 
     local id = lastLooked.id
     local count = lastLooked.count
     local tag = formatIdTag(id, count)
-    lastLooked = nil
+
+    schedule(500, function()
+      lastLooked = nil
+    end)
 
     -- 1. Actualizar labels en la pantalla central y barra de estado
     local function patchScreenLabels()

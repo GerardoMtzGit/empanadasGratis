@@ -324,7 +324,8 @@ CaveBot.Extensions.BuySupplies.setup = function()
     local npc = getCreatureByName(npcName)
     if not npc and not isTradeWindowOpen() then
       local pos = player:getPosition()
-      for _, c in ipairs(getCreatures()) do
+      local specs = (getSpectators and getSpectators()) or {}
+      for _, c in ipairs(specs) do
         if c:isNpc() and getDistanceBetween(pos, c:getPosition()) <= 4 then
           npc = c
           npcName = c:getName()

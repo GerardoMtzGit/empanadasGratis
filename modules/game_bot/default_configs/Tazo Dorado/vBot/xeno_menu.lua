@@ -1,5 +1,5 @@
 modules.game_interface.gameRootPanel.onMouseRelease = function(widget, mousePos, mouseButton)
-    if mouseButton == 2 then
+    if (mouseButton == 2 or mouseButton == MouseRightButton) and not g_keyboard.isCtrlPressed() then
         local child = rootWidget:recursiveGetChildByPos(mousePos)
         if child == widget then
             local menu = g_ui.createWidget('PopupMenu')

@@ -34,6 +34,36 @@ if not config.height or config.height < 260 then config.height = 360 end
 if type(config.list) ~= "table" or #config.list == 0 then
     config.list = defaultUserList
 end
+local function ensureContainerMaximized(container)
+    if not container or not container.window then return end
+    if container.silent or (container.window and container.window.silent) then return end
+    local cItem = container:getContainerItem()
+    local cId = cItem and cItem:getId()
+    if cId and config.list then
+        for _, entry in ipairs(config.list) do
+            if entry.item == cId and entry.min then
+                return
+            end
+        end
+    end
+    local win = container.window
+    if win.maximize then
+        pcall(function() win:maximize() end)
+    end
+    win.minimized = false
+    local contentsPanel = win:getChildById('contentsPanel')
+    if contentsPanel then
+        contentsPanel:show()
+    end
+    local miniwindowScrollBar = win:getChildById('miniwindowScrollBar')
+    if miniwindowScrollBar then
+        miniwindowScrollBar:show()
+    end
+    local minimizeButton = win:getChildById('minimizeButton')
+    if minimizeButton then
+        minimizeButton:setOn(false)
+    end
+end
 
 UI.Separator()
 local renameContui = setupUI([[
@@ -80,7 +110,7 @@ Panel
 
   Button
     id: minimiseCont
-    !text: tr('Minimise All')
+    !text: tr('Maximise All')
     anchors.top: prev.top
     anchors.left: parent.horizontalCenter
     anchors.right: parent.right
@@ -427,12 +457,40 @@ local function isBackOpen()
 end
 
 local lastActionTime = 0
+local lastOpenAttempts = {}
 local function checkAndOpenNextContainer()
     if not g_game.isOnline() then return false end
     if not config.enabled then return false end
 
     local currentNow = now or (os.time() * 1000)
     if currentNow < lastActionTime + 350 then
+        return false
+    end
+
+    -- Keep non-minimized containers maximized
+    for _, c in pairs(getContainers()) do
+        if c.window and c.window.minimized and not c.silent and not (c.window and c.window.silent) then
+            local cItem = c:getContainerItem()
+            local cId = cItem and cItem:getId()
+            local isConfiguredMin = false
+            if cId and config.list then
+                for _, entry in ipairs(config.list) do
+                    if entry.item == cId and entry.min then
+                        isConfiguredMin = true
+                        break
+                    end
+                end
+            end
+            if not isConfiguredMin then
+                ensureContainerMaximized(c)
+            end
+        end
+    end
+
+    -- Protection: Tibia client can only handle up to 14 open containers.
+    -- Opening more forces server to close existing containers, creating an infinite loop.
+    local openContainers = getContainers()
+    if #openContainers >= 14 then
         return false
     end
 
@@ -460,23 +518,28 @@ local function checkAndOpenNextContainer()
             if entry.enabled and entry.item and entry.item > 100 then
                 local isOpen = isContainerOpen(entry.item)
                 if not isOpen then
-                    -- Search in body slots (right, left, ammo)
-                    local slots = {getRight(), getLeft(), getAmmo()}
-                    for _, slotItem in ipairs(slots) do
-                        if slotItem and slotItem:getId() == entry.item then
-                            lastActionTime = currentNow
-                            g_game.open(slotItem)
-                            return true
-                        end
-                    end
-
-                    -- Search in open containers
-                    for _, c in pairs(getContainers()) do
-                        for _, it in ipairs(c:getItems()) do
-                            if it:getId() == entry.item then
+                    local lastAttempt = lastOpenAttempts[entry.item] or 0
+                    if currentNow - lastAttempt > 2000 then
+                        -- Search in body slots (right, left, ammo)
+                        local slots = {getRight(), getLeft(), getAmmo()}
+                        for _, slotItem in ipairs(slots) do
+                            if slotItem and slotItem:getId() == entry.item then
                                 lastActionTime = currentNow
-                                g_game.open(it)
+                                lastOpenAttempts[entry.item] = currentNow
+                                g_game.open(slotItem)
                                 return true
+                            end
+                        end
+
+                        -- Search in open containers
+                        for _, c in pairs(getContainers()) do
+                            for _, it in ipairs(c:getItems()) do
+                                if it:getId() == entry.item then
+                                    lastActionTime = currentNow
+                                    lastOpenAttempts[entry.item] = currentNow
+                                    g_game.open(it)
+                                    return true
+                                end
                             end
                         end
                     end
@@ -691,9 +754,7 @@ if rootWidget then
 
     renameContui.minimiseCont.onClick = function(widget)
         for i, container in ipairs(getContainers()) do
-            if container.window then
-                container.window:setContentHeight(34)
-            end
+            ensureContainerMaximized(container)
         end
     end
 
@@ -789,6 +850,7 @@ end
 
 onContainerOpen(function(container, previousContainer)
     if not container or not container.window then return end
+    if container.silent or (container.window and container.window.silent) then return end
     local containerWindow = container.window
     local cItem = container:getContainerItem()
     local cId = cItem and cItem:getId() or nil
@@ -797,7 +859,11 @@ onContainerOpen(function(container, previousContainer)
         for _, entry in pairs(config.list) do
             if entry.enabled and entry.item == cId then
                 if entry.min then
-                    containerWindow:minimize()
+                    if containerWindow.minimize then
+                        containerWindow:minimize()
+                    end
+                else
+                    ensureContainerMaximized(container)
                 end
                 if entry.value and #entry.value > 0 then
                     containerWindow:setText(entry.value)
@@ -818,7 +884,7 @@ onContainerOpen(function(container, previousContainer)
     end
 
     if config.enabled then
-        schedule(200, function()
+        schedule(250, function()
             checkAndOpenNextContainer()
         end)
     end
@@ -827,18 +893,24 @@ end)
 local function nameContainersOnLogin()
     if not config.list or #config.list == 0 then return end
     for i, container in ipairs(getContainers()) do
-        local cItem = container:getContainerItem()
-        local cId = cItem and cItem:getId() or nil
-        if cId and container.window then
-            for _, entry in pairs(config.list) do
-                if entry.enabled and entry.item == cId then
-                    if entry.value and #entry.value > 0 then
-                        container.window:setText(entry.value)
+        if not container.silent and not (container.window and container.window.silent) then
+            local cItem = container:getContainerItem()
+            local cId = cItem and cItem:getId() or nil
+            if cId and container.window then
+                for _, entry in pairs(config.list) do
+                    if entry.enabled and entry.item == cId then
+                        if entry.value and #entry.value > 0 then
+                            container.window:setText(entry.value)
+                        end
+                        if entry.min then
+                            if container.window.minimize then
+                                container.window:minimize()
+                            end
+                        else
+                            ensureContainerMaximized(container)
+                        end
+                        break
                     end
-                    if entry.min then
-                        container.window:minimize()
-                    end
-                    break
                 end
             end
         end
@@ -848,6 +920,26 @@ nameContainersOnLogin()
 
 local mainLoop = macro(350, function()
     if not g_game.isOnline() then return end
+
+    -- Keep containers maximized (only if not configured as minimized or silent)
+    for _, c in pairs(getContainers()) do
+        if c.window and c.window.minimized and not c.silent and not (c.window and c.window.silent) then
+            local cItem = c:getContainerItem()
+            local cId = cItem and cItem:getId()
+            local isConfiguredMin = false
+            if cId and config.list then
+                for _, entry in ipairs(config.list) do
+                    if entry.item == cId and entry.min then
+                        isConfiguredMin = true
+                        break
+                    end
+                end
+            end
+            if not isConfiguredMin then
+                ensureContainerMaximized(c)
+            end
+        end
+    end
 
     -- 1. Auto open BPs if enabled
     if config.enabled then
@@ -882,7 +974,7 @@ end)
 
 onContainerClose(function(container)
     if config.enabled and config.forceOpen then
-        schedule(250, function()
+        schedule(500, function()
             checkAndOpenNextContainer()
         end)
     end

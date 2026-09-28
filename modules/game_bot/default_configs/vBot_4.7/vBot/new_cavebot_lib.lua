@@ -233,17 +233,39 @@ end
 --- Finds position of npc by name and reaches its position.
 -- @return void(acion) or boolean
 function CaveBot.ReachNPC(name)
+    if not name then return false end
     name = name:lower()
     
     local npc = nil
-    for i, spec in pairs(getSpectators()) do
-        if spec:isNpc() and spec:getName():lower() == name then
-            npc = spec
+    local pPos = player:getPosition()
+    local specs = (getSpectators and getSpectators()) or {}
+    for i, spec in pairs(specs) do
+        if spec:isNpc() then
+            local sName = spec:getName():lower()
+            if sName == name or sName:find(name, 1, true) or name:find(sName, 1, true) then
+                npc = spec
+                break
+            end
         end
+    end
+
+    if not npc then
+        -- Buscar NPC mas cercano (<= 6 sqm) si el nombre no coincide exactamente
+        for i, spec in pairs(specs) do
+            if spec:isNpc() and getDistanceBetween(pPos, spec:getPosition()) <= 6 then
+                npc = spec
+                break
+            end
+        end
+    end
+
+    if not npc then
+        return false
     end
 
     if not CaveBot.MatchPosition(npc:getPosition(), 3) then
         CaveBot.GoTo(npc:getPosition())
+        return false
     else
         return true
     end
@@ -493,11 +515,14 @@ end
 -- @return void
 function CaveBot.Conversation(...)
     local expressions = {...}
-    local delay = storage.extras.talkDelay or 1000
+    local delay = (storage.extras and storage.extras.talkDelay) or 1000
 
     local talkDelay = 0
     for i, expr in ipairs(expressions) do
-        schedule(talkDelay, function() NPC.say(expr) end)
+        schedule(talkDelay, function()
+            pcall(function() if NPC and NPC.say then NPC.say(expr) end end)
+            pcall(function() if say then say(expr) elseif g_game and g_game.talk then g_game.talk(expr) end end)
+        end)
         talkDelay = talkDelay + delay
     end
 end
@@ -509,10 +534,27 @@ function CaveBot.OpenNpcTrade()
     return CaveBot.Conversation("hi", "trade")
 end
 
---- Says hi destination yes to NPC.
+--- Says hi destination yes to NPC with 2-second internal cooldown between each action.
 -- Used as shorthand to travel.
 -- @param destination is string
 -- @return void
-function CaveBot.Travel(destination)
-    return CaveBot.Conversation("hi", destination, "yes")
+function CaveBot.Travel(destination, customDelay)
+    local stepDelay = customDelay or 2000
+    local expressions = {"hi", destination, "yes"}
+    local talkDelay = 0
+    for i, expr in ipairs(expressions) do
+        schedule(talkDelay, function()
+            if NPC and NPC.say then
+                pcall(NPC.say, expr)
+            elseif say then
+                pcall(say, expr)
+            elseif g_game and g_game.talk then
+                pcall(g_game.talk, expr)
+            end
+        end)
+        talkDelay = talkDelay + stepDelay
+    end
+    if CaveBot.delay then
+        CaveBot.delay(talkDelay + 1000)
+    end
 end

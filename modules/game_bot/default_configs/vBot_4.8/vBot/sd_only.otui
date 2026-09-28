@@ -1,0 +1,53 @@
+SdIconWidget < UIButton
+  size: 46 46
+  focusable: false
+  phantom: false
+  draggable: true
+  background-color: #0b1526ee
+  border-width: 1
+  border-color: #ef4444
+  anchors.left: parent.left
+  anchors.top: parent.top
+  margin-left: 72
+  margin-top: 30
+
+  $on:
+    border-color: #22c55e
+    background-color: #14532dee
+
+  $hover:
+    border-color: #f87171
+    background-color: #111e38ee
+
+  $pressed:
+    border-color: #22c55e
+    background-color: #166534ee
+
+  UIItem
+    id: item
+    anchors.top: parent.top
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-top: 3
+    virtual: true
+    phantom: true
+    size: 26 26
+
+  UIWidget
+    id: status
+    anchors.top: parent.top
+    anchors.right: parent.right
+    size: 7 7
+    margin-top: 3
+    margin-right: 3
+    background-color: #ef4444
+    phantom: true
+
+  Label
+    id: text
+    anchors.bottom: parent.bottom
+    anchors.horizontalCenter: parent.horizontalCenter
+    margin-bottom: 2
+    font: terminus-10px
+    color: #fca5a5
+    phantom: true
+    text: SD ONLY

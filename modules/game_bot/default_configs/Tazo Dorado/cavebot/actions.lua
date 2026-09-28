@@ -19,8 +19,6 @@ end
 local noPath = 0
 
 -- antistuck f()
-local nextPos = nil -- creature
-local nextPosF = nil -- furniture
 local function modPos(dir)
     local y = 0
     local x = 0
@@ -212,6 +210,9 @@ it can also return string "retry", then the function will be called again in 20 
 ]]--
 CaveBot.registerAction = function(action, color, callback) 
   action = action:lower()
+  if CaveBot.Actions[action] then
+    return warn("Duplicated acction: " .. action)
+  end
   CaveBot.Actions[action] = {
     color=color,
     callback=callback
@@ -353,13 +354,13 @@ CaveBot.registerAction("goto", "green", function(value, retries, prev)
   local path2 = findPath(playerPos, pos, maxDist, { ignoreNonPathable = true, precision = 1 })
   if not path2 then
     local foundMonster = false
+    local checkPos = {x = playerPos.x, y = playerPos.y, z = playerPos.z}
     for i, dir in ipairs(path) do
       local dirs = modPos(dir)
-      nextPos = nextPos or playerPos
-      nextPos.x = nextPos.x + dirs[1]
-      nextPos.y = nextPos.y + dirs[2]
+      checkPos.x = checkPos.x + dirs[1]
+      checkPos.y = checkPos.y + dirs[2]
   
-      local tile = g_map.getTile(nextPos)
+      local tile = g_map.getTile(checkPos)
       if tile then
           if tileHasCreature(tile) then
               local creature = tile:getCreatures()[1]

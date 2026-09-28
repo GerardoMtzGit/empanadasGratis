@@ -149,7 +149,8 @@ Config.setup = function(dir, widget, configExtension, callback)
   end
   
   local isRefreshing = false
-  local refresh = function()
+  local lastLoadedData = nil
+  local refresh = function(forceReload)
     isRefreshing = true
     local configs = Config.list(dir)
     local configIndex = 1
@@ -168,9 +169,10 @@ Config.setup = function(dir, widget, configExtension, callback)
     else
       context.storage._configs[dir].selected = nil
     end
+    lastLoadedData = data
     context.storage._configs[dir].enabled = widget.switch:isOn()
     isRefreshing = false    
-    callback(context.storage._configs[dir].selected, widget.switch:isOn(), data)
+    callback(context.storage._configs[dir].selected, widget.switch:isOn(), data, forceReload)
   end
   
   widget.list.onOptionChange = function(widget)
@@ -181,8 +183,14 @@ Config.setup = function(dir, widget, configExtension, callback)
   end
   
   widget.switch.onClick = function()
-    widget.switch:setOn(not widget.switch:isOn())
-    refresh()
+    local newState = not widget.switch:isOn()
+    widget.switch:setOn(newState)
+    context.storage._configs[dir].enabled = newState
+    if lastLoadedData ~= nil then
+      callback(context.storage._configs[dir].selected, newState, lastLoadedData, false)
+    else
+      refresh()
+    end
   end
   
   widget.add.onClick = function()
@@ -212,7 +220,7 @@ Config.setup = function(dir, widget, configExtension, callback)
     context.UI.MultilineEditorWindow(Config.loadRaw(dir, name), {title="Config editor - " .. name .. " in " .. dir}, function(newValue)
         local data = Config.parse(newValue)
         Config.save(dir, name, data, configExtension)
-        refresh()
+        refresh(true)
       end)
   end
   

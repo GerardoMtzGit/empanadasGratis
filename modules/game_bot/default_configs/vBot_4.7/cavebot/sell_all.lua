@@ -5,86 +5,21 @@ if CaveBot and CaveBot.Actions then
   CaveBot.Actions["SellAll"] = nil
 end
 
--- State tracking for consecutive identical sellall waypoints
-local lastSoldSuccessNpc = nil
-local lastSoldSuccessTime = 0
-
--- Helper to find the NPC trade window anywhere in OTClient
-local function getNpcTradeWindow()
+local function isTrading()
+  if NPC and NPC.isTrading then
+    local ok, res = pcall(NPC.isTrading)
+    if ok and res then return true end
+  end
   if modules.game_npctrade and modules.game_npctrade.npcWindow and modules.game_npctrade.npcWindow:isVisible() then
-    return modules.game_npctrade.npcWindow
+    return true
   end
-  if modules.game_npctrader then
-    for _, var in ipairs({"npcWindow", "tradeWindow", "window", "traderWindow", "ui"}) do
-      if modules.game_npctrader[var] and modules.game_npctrader[var].isVisible and modules.game_npctrader[var]:isVisible() then
-        return modules.game_npctrader[var]
-      end
-    end
+  if modules.game_npctrader and modules.game_npctrader.npcWindow and modules.game_npctrader.npcWindow:isVisible() then
+    return true
   end
-  local root = g_ui.getRootWidget()
-  if root then
-    for _, w in ipairs(root:getChildren() or {}) do
-      if w:isVisible() then
-        local t = w.getText and tostring(w:getText()):lower() or ""
-        local id = tostring(w:getId()):lower()
-        if t:find("intercambio con npc") or t:find("npc trade") or id:find("npctrade") or id:find("npcwindow") then
-          return w
-        end
-        local title = w:getChildById("title") or w:getChildById("windowText")
-        if title and title.getText and tostring(title:getText()):lower():find("intercambio con npc") then
-          return w
-        end
-      end
-    end
-  end
-  return nil
+  return false
 end
 
--- Hook NPC.isTrading so engine functions know trade is open
-local oldIsTrading = NPC and NPC.isTrading
-if NPC then
-  NPC.isTrading = function()
-    local win = getNpcTradeWindow()
-    if win and win:isVisible() then return true end
-    if oldIsTrading then return oldIsTrading() end
-    return false
-  end
-end
-
-local function isTradeWindowOpen()
-  return (getNpcTradeWindow() ~= nil)
-end
-
-local function findChildByText(parent, target)
-  if not parent then return nil end
-  if parent.getText then
-    local t = tostring(parent:getText()):lower():trim()
-    if t == target:lower():trim() then
-      return parent
-    end
-  end
-  for _, child in ipairs(parent:getChildren() or {}) do
-    local f = findChildByText(child, target)
-    if f then return f end
-  end
-  return nil
-end
-
--- Safely close the trade window through every known method
-local function safeCloseTrade()
-  local win = getNpcTradeWindow()
-  if win then
-    local closeBtn = findChildByText(win, "Cerrar") or findChildByText(win, "Close") or win:getChildById("closeButton") or win:getChildById("buttonClose")
-    if closeBtn then
-      local pos = closeBtn:getPosition()
-      local center = {x = pos.x + math.floor(closeBtn:getWidth()/2), y = pos.y + math.floor(closeBtn:getHeight()/2)}
-      pcall(function() if closeBtn.onClick then closeBtn:onClick(center) end end)
-      pcall(function() if closeBtn.onMousePress then closeBtn:onMousePress(center, 1) end end)
-      pcall(function() if closeBtn.onMouseRelease then closeBtn:onMouseRelease(center, 1) end end)
-    end
-    pcall(function() win:hide() end)
-  end
-
+local function closeTrade()
   pcall(function()
     if NPC and NPC.closeTrade then
       NPC.closeTrade()
@@ -98,77 +33,35 @@ local function safeCloseTrade()
       modules.game_npctrader.closeNpcTrade()
     end
   end)
-  pcall(function()
-    if NPC and NPC.say then NPC.say("bye") end
-    say("bye")
-  end)
 end
 
--- Switch to the "Vender" tab
-local function switchToSellTab()
-  local win = getNpcTradeWindow()
-  if not win then return end
-
-  if modules.game_npctrade then modules.game_npctrade.npcWindow = win end
-  if modules.game_npctrader then modules.game_npctrader.npcWindow = win end
-
-  -- 1. Try TabBar
-  local function findTabBar(widget)
-    if not widget then return nil end
-    if widget.selectTab and widget.getTabs then
-      local tabs = widget:getTabs()
-      if tabs and #tabs >= 2 then return widget end
-    end
-    for _, child in ipairs(widget:getChildren() or {}) do
-      local f = findTabBar(child)
-      if f then return f end
-    end
-    return nil
-  end
-  local tb = findTabBar(win)
-  if tb then
-    pcall(function()
-      local tabs = tb:getTabs()
-      tb:selectTab(tabs[2])
-    end)
-  end
-
-  -- 2. Find any button/tab widget with text "Vender" or "Sell"
-  local sellBtn = findChildByText(win, "Vender") or findChildByText(win, "Sell")
-  if sellBtn then
-    local p = sellBtn:getParent()
-    while p do
-      if p.selectTab then
-        pcall(function() p:selectTab(sellBtn) end)
-        break
-      end
-      p = p:getParent()
-    end
-    local pos = sellBtn:getPosition()
-    local center = {x = pos.x + math.floor(sellBtn:getWidth()/2), y = pos.y + math.floor(sellBtn:getHeight()/2)}
-    pcall(function() sellBtn:focus() end)
-    pcall(function() if sellBtn.setOn then sellBtn:setOn(true) end end)
-    pcall(function() if sellBtn.setChecked then sellBtn:setChecked(true) end end)
-    pcall(function() if sellBtn.onMousePress then sellBtn:onMousePress(center, 1) end end)
-    pcall(function() if sellBtn.onMouseRelease then sellBtn:onMouseRelease(center, 1) end end)
-    pcall(function() if sellBtn.onClick then sellBtn:onClick(center) end end)
-  end
-
-  -- 3. Also try module functions
-  pcall(function()
-    if modules.game_npctrade and modules.game_npctrade.setTradeType then
-      modules.game_npctrade.setTradeType(modules.game_npctrade.SELL or 2)
-    end
-    if modules.game_npctrader and modules.game_npctrader.setTradeType then
-      modules.game_npctrader.setTradeType(modules.game_npctrader.SELL or 2)
-    end
-  end)
+local function getCap()
+  if freecap then return freecap() end
+  if player and player.getFreeCapacity then return player:getFreeCapacity() end
+  return 0
 end
+
+local function getTotalContainerItems()
+  local total = 0
+  local containers = getContainers() or {}
+  for _, c in pairs(containers) do
+    local items = c:getItems() or {}
+    total = total + #items
+  end
+  return total
+end
+
+local lastTalkTime = 0
+local lastSoldNpc = ""
+local lastSoldTime = 0
+local lastProgressCap = -1
+local lastProgressItems = -1
+local emptyConfirmCount = 0
+local totalSoldRounds = 0
 
 CaveBot.Extensions.SellAll.setup = function()
   local callback = function(value, retries)
     local val = string.split(value, ",")
-    local wait = false
 
     for i, v in ipairs(val) do
       v = v:trim()
@@ -176,140 +69,241 @@ CaveBot.Extensions.SellAll.setup = function()
       val[i] = v
     end
 
-    if table.find(val, "yes", true) then
-      wait = true
-    end
-
     local npcName = val[1] and tostring(val[1]):trim() or "NPC"
-    local customDelay = tonumber(val[2])
 
-    -- Check if we already sold everything to this NPC in the previous sequential waypoint
-    if retries <= 0 then
-      if lastSoldSuccessNpc and lastSoldSuccessNpc == npcName:lower() and (os.time() - lastSoldSuccessTime < 20) and not isTradeWindowOpen() then
-        warn("CaveBot[SellAll]: Already finished selling to " .. npcName .. ". Skipping duplicate waypoint.")
+    -- Initialization on retry 0
+    if retries == 0 then
+      lastProgressCap = -1
+      lastProgressItems = -1
+      emptyConfirmCount = 0
+      totalSoldRounds = 0
+      lastTalkTime = 0
+
+      if botLogger and botLogger.write then
+        botLogger.write("SELL:START", string.format("Iniciando waypoint sellall con '%s' | Args: '%s' | Cap: %d | Items: %d", 
+          npcName, tostring(value), getCap(), getTotalContainerItems()))
+      end
+
+      -- Skip duplicate sequential waypoint if already sold recently
+      if lastSoldNpc == npcName:lower() and (os.time() - lastSoldTime < 15) and not isTrading() then
+        warn("CaveBot[SellAll]: Todo vendido a " .. npcName .. ". Continuando ruta.")
         return true
       end
     end
 
-    -- Timeout protection: if we've retried 10 times without opening trade or completing, proceed
-    if retries >= 10 then
-      warn("CaveBot[SellAll]: Max retries reached for " .. npcName .. ", proceeding.")
-      safeCloseTrade()
-      lastSoldSuccessNpc = npcName:lower()
-      lastSoldSuccessTime = os.time()
-      delay(800)
-      CaveBot.delay(800)
+    -- Timeout protection ONLY if unable to trade after 30 retries
+    if not isTrading() and retries >= 30 then
+      warn("CaveBot[SellAll]: No se pudo abrir trade con " .. npcName .. ", continuando ruta.")
+      closeTrade()
       return true
     end
 
-    -- Locate NPC
-    local npc = getCreatureByName(npcName)
-    if not npc and not isTradeWindowOpen() then
+    -- 1. Ensure player is NOT moving before interaction
+    if player and player.isWalking and player:isWalking() then
+      CaveBot.delay(250)
+      return "retry"
+    end
+
+    -- 2. Reach NPC
+    local npc = nil
+    if getCreatureByName then
+      npc = getCreatureByName(npcName)
+    end
+    if not npc and not isTrading() then
       local pos = player:getPosition()
-      for _, c in ipairs(getCreatures()) do
-        if c:isNpc() and getDistanceBetween(pos, c:getPosition()) <= 4 then
-          npc = c
-          npcName = c:getName()
-          break
+      local spectators = (getSpectators and getSpectators()) or {}
+      for _, c in ipairs(spectators) do
+        if c:isNpc() then
+          local cName = c:getName():lower()
+          local targetName = npcName:lower()
+          if cName == targetName or cName:find(targetName, 1, true) or targetName:find(cName, 1, true) then
+            npc = c
+            npcName = c:getName()
+            break
+          elseif getDistanceBetween(pos, c:getPosition()) <= 4 then
+            npc = c
+            npcName = c:getName()
+            break
+          end
         end
       end
     end
 
-    delay(200)
-    CaveBot.delay(200)
-    if npc and not CaveBot.ReachNPC(npcName) then
+    if not npc and not isTrading() then
+      if retries >= 5 then
+        warn("CaveBot[SellAll]: NPC '" .. tostring(npcName) .. "' no encontrado cerca. Saltando acción.")
+        if botLogger and botLogger.write then
+          botLogger.write("SELL:NOTFOUND", string.format("NPC '%s' no encontrado cerca tras %d intentos. Continuando ruta.", npcName, retries))
+        end
+        return false
+      end
+      CaveBot.delay(600)
       return "retry"
     end
 
-    -- If trade window is not open, say hi/trade and wait 2.5 seconds
-    if not isTradeWindowOpen() then
-      warn("CaveBot[SellAll]: Saying hi/trade to " .. tostring(npcName) .. "...")
-      CaveBot.OpenNpcTrade()
-      local waitTrade = 2500
-      delay(waitTrade)
-      CaveBot.delay(waitTrade)
-      return "retry"
+    if npc and not isTrading() then
+      if CaveBot.ReachNPC and not CaveBot.ReachNPC(npcName) then
+        CaveBot.delay(500)
+        return "retry"
+      end
     end
 
-    -- Trade window is open!
-    local win = getNpcTradeWindow()
-    if modules.game_npctrade then modules.game_npctrade.npcWindow = win end
-    if modules.game_npctrader then modules.game_npctrader.npcWindow = win end
+    -- 3. If trade is NOT open, calmly speak to NPC
+    if not isTrading() then
+      local now = os.time()
+      if (now - lastTalkTime) >= 3 then
+        lastTalkTime = now
+        warn("CaveBot[SellAll]: Abriendo trade con " .. tostring(npcName) .. "...")
+        if botLogger and botLogger.write then
+          botLogger.write("SELL:TALK", string.format("Saludando a '%s' (intento #%d)", npcName, retries))
+        end
 
-    switchToSellTab()
-    delay(300)
-    CaveBot.delay(300)
+        -- Greet NPC cleanly
+        pcall(function()
+          if NPC and NPC.say then
+            NPC.say("hi")
+          elseif say then
+            say("hi")
+          elseif g_game and g_game.talk then
+            g_game.talk("hi")
+          end
+        end)
 
-    -- Say "yes" in case of autoloot bag
+        -- Send trade request after 1000ms
+        schedule(1000, function()
+          if not isTrading() then
+            pcall(function()
+              if NPC and NPC.say then
+                NPC.say("trade")
+              elseif say then
+                say("trade")
+              elseif g_game and g_game.talk then
+                g_game.talk("trade")
+              end
+            end)
+          end
+        end)
+
+        CaveBot.delay(3000)
+        return "retry"
+      else
+        CaveBot.delay(800)
+        return "retry"
+      end
+    end
+
+    -- 4. Trade window is OPEN!
+    local currentCap = getCap()
+    local currentItems = getTotalContainerItems()
+    local waitParam = (val[2] == "yes" or table.find(val, "yes", true)) and true or false
+
+    -- Custom delay parameter support (e.g. sellall ZurdoGM,1800 or sellall ZurdoGM,yes)
+    local customDelay = nil
+    for idx = 2, #val do
+      if type(val[idx]) == "number" and val[idx] >= 200 then
+        customDelay = val[idx]
+        break
+      end
+    end
+    -- Slower selling delay to ensure safe, human-paced execution
+    local sellDelay = customDelay or (waitParam and 1500 or 1300)
+
+    -- Check progress
+    local progressMade = false
+    if lastProgressCap >= 0 and currentCap > lastProgressCap then
+      progressMade = true
+    end
+    if lastProgressItems >= 0 and currentItems < lastProgressItems then
+      progressMade = true
+    end
+
+    if progressMade then
+      totalSoldRounds = totalSoldRounds + 1
+      emptyConfirmCount = 0
+      if botLogger and botLogger.write then
+        botLogger.write("SELL:PROGRESS", string.format("Venta detectada! Cap: %d -> %d | Items: %d -> %d (Ronda #%d)", 
+          lastProgressCap, currentCap, lastProgressItems, currentItems, totalSoldRounds))
+      end
+      lastProgressCap = currentCap
+      lastProgressItems = currentItems
+    elseif lastProgressCap < 0 then
+      lastProgressCap = currentCap
+      lastProgressItems = currentItems
+    end
+
+    -- 5. Execute sellAll cleanly and safely
     pcall(function()
-      if NPC and NPC.say then NPC.say("yes") end
-      say("yes")
+      if modules.game_npctrade and modules.game_npctrade.sellAll then
+        modules.game_npctrade.sellAll(waitParam, val)
+      elseif modules.game_npctrader and modules.game_npctrader.sellAll then
+        modules.game_npctrader.sellAll(waitParam, val)
+      elseif NPC and NPC.sellAll then
+        NPC.sellAll()
+      end
     end)
 
-    -- Slower, human-paced delay between passes (default 650ms) to completely prevent server kicks
-    local passDelay = customDelay or 650
-    local maxPasses = 18
-    local consecutiveEmpty = 0
-
-    warn(string.format("CaveBot[SellAll]: Executing %d sell passes with %dms delay for %s...", maxPasses, passDelay, npcName))
-
-    for pass = 1, maxPasses do
-      -- 1. Native module sellAll (sells items according to client's internal routine)
-      pcall(function()
-        if modules.game_npctrade and modules.game_npctrade.sellAll then
-          modules.game_npctrade.sellAll(wait, val)
-        elseif modules.game_npctrader and modules.game_npctrader.sellAll then
-          modules.game_npctrader.sellAll(wait, val)
-        end
-      end)
-
-      -- 2. Direct single-item sell backup to ensure 100% of items sell without packet flood
-      local soldAny = false
-      pcall(function()
-        local sellItems = (NPC and NPC.getSellItems and NPC.getSellItems()) or {}
-        for _, entry in ipairs(sellItems) do
-          local isException = false
-          for i = 2, #val do
-            if val[i] == entry.id or val[i] == entry.name then
-              isException = true
-              break
-            end
-          end
-          if not isException then
-            local qty = 0
-            pcall(function() qty = NPC.getSellQuantity(entry.item) end)
-            if not qty or qty <= 0 then
-              pcall(function() qty = NPC.getSellQuantity(entry.id) end)
-            end
-            if qty and qty > 0 then
-              NPC.sell(entry.item, qty, true)
-              soldAny = true
-              break -- only sell ONE item per pass directly to avoid flood/kicks!
-            end
-          end
-        end
-      end)
-
-      if soldAny then
-        consecutiveEmpty = 0
-      else
-        consecutiveEmpty = consecutiveEmpty + 1
-        -- If for 4 consecutive passes nothing could be sold directly and at least 4 passes have run, everything is sold!
-        if pass >= 4 and consecutiveEmpty >= 4 then
-          warn("CaveBot[SellAll]: All items sold successfully! Finishing early at pass " .. pass .. ".")
-          break
-        end
-      end
-
-      delay(passDelay)
-      CaveBot.delay(passDelay)
+    if botLogger and botLogger.write and (totalSoldRounds == 0 or progressMade) then
+      botLogger.write("SELL:DISPATCH", string.format("sellAll ejecutado (wait=%s, delay=%dms, cap=%d)", 
+        tostring(waitParam), sellDelay, currentCap))
     end
 
-    warn("CaveBot[SellAll]: Completed selling to " .. npcName .. "! Closing trade window.")
-    safeCloseTrade()
-    lastSoldSuccessNpc = npcName:lower()
-    lastSoldSuccessTime = os.time()
-    delay(800)
+    -- If progress was made, continue selling
+    if progressMade then
+      emptyConfirmCount = 0
+      CaveBot.delay(sellDelay)
+      return "retry"
+    end
+
+    -- 6. No progress: check nested backpacks!
+    local openedSubContainer = false
+    local containers = getContainers() or {}
+    for _, container in pairs(containers) do
+      local cId = container:getContainerItem() and container:getContainerItem():getId()
+      if cId then
+        for _, item in ipairs(container:getItems() or {}) do
+          if item:getId() == cId and item:isContainer() then
+            if botLogger and botLogger.write then
+              botLogger.write("SELL:NESTED", string.format("Abriendo mochila interior ID %d en '%s'...", cId, container:getName() or "Mochila"))
+            end
+            g_game.open(item, container)
+            openedSubContainer = true
+            break
+          end
+        end
+      end
+      if openedSubContainer then break end
+    end
+
+    if openedSubContainer then
+      warn("CaveBot[SellAll]: Abriendo siguiente mochila de loot...")
+      emptyConfirmCount = 0
+      lastProgressItems = -1
+      CaveBot.delay(1000)
+      return "retry"
+    end
+
+    -- 7. No progress and no nested backpacks: increment confirmation checks
+    emptyConfirmCount = emptyConfirmCount + 1
+    if botLogger and botLogger.write then
+      botLogger.write("SELL:CHECK", string.format("Confirmacion %d de 4 (sin cambios en cap ni items)", emptyConfirmCount))
+    end
+
+    if emptyConfirmCount < 4 then
+      CaveBot.delay(sellDelay)
+      return "retry"
+    end
+
+    -- 8. Confirmed 100% sold after 4 consecutive rounds!
+    warn("CaveBot[SellAll]: 100% de ítems vendidos con éxito. Continuando ruta.")
+    if botLogger and botLogger.write then
+      botLogger.write("SELL:COMPLETE", string.format("Venta con '%s' completada al 100%% tras %d rondas. Cap final: %d. Cerrando trade.", 
+        npcName, totalSoldRounds, getCap()))
+    end
+
+    closeTrade()
+    lastSoldNpc = npcName:lower()
+    lastSoldTime = os.time()
+    emptyConfirmCount = 0
     CaveBot.delay(800)
     return true
   end
@@ -332,7 +326,7 @@ CaveBot.Extensions.SellAll.setup = function()
   CaveBot.Editor.registerAction("sellall", "sell all", {
     value="NPC",
     title="Sell All",
-    description="NPC Name, delay in ms (default 650), exceptions: id separated by comma",
+    description="NPC Name, 'yes' (1500ms delay) or ms (e.g. 1800), exceptions: id separated by comma",
   })
 end
 

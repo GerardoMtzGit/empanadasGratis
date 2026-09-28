@@ -8,7 +8,7 @@ if not storage[panelName] then
     enabled = false,
     mode = 1, -- 1: Dinamico, 2: Solo 1, 3: Varios (Area)
     singleType = "spell", -- "spell" o "rune"
-    singleSpell = "exori frigo", -- Spell por defecto
+    singleSpell = "exori gran tera", -- Spell por defecto
     singleRuneId = 3155, -- SD default si es runa
     singleApproach = true, -- Acercarse a 3 SQM
     singleApproachDist = 3,
@@ -32,7 +32,7 @@ if config.singleType == nil then
   config.singleType = "spell"
 end
 if config.singleSpell == nil then
-  config.singleSpell = "exori frigo"
+  config.singleSpell = "exori gran tera"
 end
 if not config.singleRuneId or config.singleRuneId <= 0 then
   config.singleRuneId = 3155
@@ -83,7 +83,7 @@ Panel
     font: cipsoftFont
     text-align: center
     color: #a0a0a0
-    text: [OFF] Dinamico | exori frigo / GFB (>=2)
+    text: [OFF] Dinamico | exori gran tera / GFB (>=2)
 
   HorizontalSeparator
     anchors.top: prev.bottom
@@ -197,16 +197,20 @@ end
 
 -- Preset single runes / spells
 local singleOptions = {
+  { text = "[Spell] exori gran tera", type = "spell", spell = "exori gran tera", id = 0 },
+  { text = "[Spell] exori gran frigo", type = "spell", spell = "exori gran frigo", id = 0 },
+  { text = "[Spell] exori gran flam", type = "spell", spell = "exori gran flam", id = 0 },
+  { text = "[Spell] exori gran vis", type = "spell", spell = "exori gran vis", id = 0 },
+  { text = "[Spell] exori tera", type = "spell", spell = "exori tera", id = 0 },
   { text = "[Spell] exori frigo", type = "spell", spell = "exori frigo", id = 0 },
   { text = "[Spell] exori flam", type = "spell", spell = "exori flam", id = 0 },
   { text = "[Spell] exori vis", type = "spell", spell = "exori vis", id = 0 },
-  { text = "[Spell] exori tera", type = "spell", spell = "exori tera", id = 0 },
   { text = "[Spell] exori mort", type = "spell", spell = "exori mort", id = 0 },
   { text = "[Spell] exori san", type = "spell", spell = "exori san", id = 0 },
   { text = "[Spell] exori hur", type = "spell", spell = "exori hur", id = 0 },
   { text = "[Spell] exori ico", type = "spell", spell = "exori ico", id = 0 },
   { text = "[Spell] exori con", type = "spell", spell = "exori con", id = 0 },
-  { text = "[Spell] Personalizada", type = "spell", spell = "exori frigo", id = 0 },
+  { text = "[Spell] Personalizada", type = "spell", spell = "exori gran tera", id = 0 },
   { text = "[Runa] Sudden Death (SD)", type = "rune", spell = "", id = 3155 },
   { text = "[Runa] Heavy Magic Missile", type = "rune", spell = "", id = 3198 },
   { text = "[Runa] Icicle", type = "rune", spell = "", id = 3158 },

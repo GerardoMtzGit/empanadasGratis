@@ -48,6 +48,11 @@ cavebotMacro = macro(20, function()
     local retry = false
     local isSuccess = false
     if action then
+      if actionRetries == 0 and logCaveBot then
+        local pPos = player and player:getPosition()
+        local posTxt = pPos and string.format("(%d,%d,%d)", pPos.x, pPos.y, pPos.z) or "desconocida"
+        logCaveBot(currentAction.action, string.format("Iniciando acción '%s' (valor: '%s') | Pos: %s", tostring(currentAction.action), tostring(value), posTxt))
+      end
       local status, result = pcall(function()
         CaveBot.resetWalking()
         return action.callback(value, actionRetries, prevActionResult)
@@ -56,18 +61,33 @@ cavebotMacro = macro(20, function()
         if result == "retry" then
           actionRetries = actionRetries + 1
           retry = true
+          if actionRetries % 10 == 0 and logCaveBot then
+            logCaveBot(currentAction.action, string.format("Acción '%s' reintentando... (intento #%d)", tostring(currentAction.action), actionRetries))
+          end
         elseif type(result) == 'boolean' then
+          if logCaveBot then
+            logCaveBot(currentAction.action, string.format("Acción '%s' completada con éxito=%s (intentos: %d)", tostring(currentAction.action), tostring(result), actionRetries))
+          end
           actionRetries = 0
           prevActionResult = result
           isSuccess = result
         else
           warn("Invalid return from cavebot action (" .. currentAction.action .. "), should be \"retry\", false or true, is: " .. tostring(result))
+          if logCaveBot then
+            logCaveBot(currentAction.action, "Retorno inválido de acción: " .. tostring(result))
+          end
         end
       else
         warn("warn while executing cavebot action (" .. currentAction.action .. "):\n" .. result)
+        if logCaveBot then
+          logCaveBot(currentAction.action, "EXCEPCIÓN en acción: " .. tostring(result))
+        end
       end    
     else
       warn("Invalid cavebot action: " .. currentAction.action)
+      if logCaveBot then
+        logCaveBot("ERROR", "Acción no registrada en CaveBot: " .. tostring(currentAction.action))
+      end
     end
     
     if retry then
@@ -106,16 +126,42 @@ end)
 
 -- config, its callback is called immediately, data can be nil
 local lastConfig = ""
-config = Config.setup("cavebot_configs", configWidget, "cfg", function(name, enabled, data)
+config = Config.setup("cavebot_configs", configWidget, "cfg", function(name, enabled, data, forceReload)
   if enabled and CaveBot.Recorder.isOn() then
     CaveBot.Recorder.disable()
     CaveBot.setOff()
     return    
   end
 
+  if not data then 
+    ui.list:destroyChildren()
+    lastConfig = ""
+    return cavebotMacro.setOff() 
+  end
+
+  -- FAST PATH: If the same config is already loaded in the UI list and not force-reloading,
+  -- DO NOT destroy and recreate hundreds of UI widgets synchronously!
+  -- This completely prevents the client freeze when turning CaveBot OFF/ON.
+  if not forceReload and lastConfig == name and ui.list:getChildCount() > 0 then
+    actionRetries = 0
+    CaveBot.resetWalking()
+    if not enabled then
+      CaveBot.clearDelay()
+    end
+    prevActionResult = true
+    cavebotMacro.setOn(enabled)
+    cavebotMacro.delay = nil
+    if enabled and not ui.list:getFocusedChild() then
+      ui.list:focusChild(ui.list:getFirstChild())
+    end
+    if logCaveBot then
+      logCaveBot("CAVEBOT", string.format("CaveBot %s (config: '%s', waypoints: %d)", enabled and "ACTIVADO" or "DESACTIVADO", tostring(name), ui.list:getChildCount()))
+    end
+    return
+  end
+
   local currentActionIndex = ui.list:getChildIndex(ui.list:getFocusedChild())
   ui.list:destroyChildren()
-  if not data then return cavebotMacro.setOff() end
   
   local cavebotConfig = nil
   for k,v in ipairs(data) do
@@ -155,12 +201,21 @@ config = Config.setup("cavebot_configs", configWidget, "cfg", function(name, ena
   prevActionResult = true
   cavebotMacro.setOn(enabled)
   cavebotMacro.delay = nil
-  if lastConfig == name then 
+  if lastConfig == name and currentActionIndex and currentActionIndex > 0 then 
     -- restore focused child on the action list
     ui.list:focusChild(ui.list:getChildByIndex(currentActionIndex))
+  elseif not ui.list:getFocusedChild() and ui.list:getChildCount() > 0 then
+    ui.list:focusChild(ui.list:getFirstChild())
   end
   lastConfig = name  
 end)
+
+CaveBot.reload = function()
+  lastConfig = ""
+  if config and config.reload then
+    config.reload()
+  end
+end
 
 -- ui callbacks
 ui.showEditor = ui.showEditor or ui:recursiveGetChildById('showEditor')

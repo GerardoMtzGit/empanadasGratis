@@ -28,7 +28,6 @@ CaveBotPanel < Panel
       vertical-scrollbar: listScrollbar
       margin-right: 15
       focusable: false
-      auto-focus: first
       
     VerticalScrollBar
       id: listScrollbar

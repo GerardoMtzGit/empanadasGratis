@@ -22,6 +22,9 @@ vBot.isUsing = false
 vBot.customCooldowns = {}
 
 function logInfo(text)
+    if botLogger and botLogger.write then
+        botLogger.write("VBOT", text)
+    end
     local timestamp = os.date("%H:%M:%S")
     text = tostring(text)
     local start = timestamp.." [vBot]"

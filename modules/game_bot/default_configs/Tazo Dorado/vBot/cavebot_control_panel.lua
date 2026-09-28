@@ -22,6 +22,7 @@ CaveBotControlPanel < Panel
     margin-top: 2
     layout:
       type: grid
+      cell-size: 85 20
       num-columns: 2
       cell-spacing: 2
       flow: true

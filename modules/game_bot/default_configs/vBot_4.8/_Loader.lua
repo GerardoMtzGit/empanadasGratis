@@ -16,6 +16,7 @@ end
 -- here you can set manually order of scripts
 -- libraries should be loaded first
 local luaFiles = {
+  "bot_logger",
   "main",
   "items",
   "vlib",

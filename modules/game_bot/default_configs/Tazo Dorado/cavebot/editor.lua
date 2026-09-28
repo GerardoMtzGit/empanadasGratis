@@ -1,6 +1,8 @@
 CaveBot.Editor = {}
 CaveBot.Editor.Actions = {}
 
+local pendingActions = {}
+
 -- also works as registerAction(action, params), then text == action
 -- params are options for text editor or function to be executed when clicked
 -- you have many examples how to use it bellow
@@ -21,7 +23,8 @@ CaveBot.Editor.registerAction = function(action, text, params)
   end
   
   if not CaveBot.Editor.ui or not CaveBot.Editor.ui.buttons then
-    return warn("CaveBot editor warn: editor panel or buttons not created")
+    table.insert(pendingActions, {action = action, text = text, params = params, color = color})
+    return
   end
 
   local button = UI.createWidget('CaveBotEditorButton', CaveBot.Editor.ui.buttons)
@@ -49,6 +52,7 @@ CaveBot.Editor.registerAction = function(action, text, params)
   return button
 end
 
+local lastCellColWidth = 0
 local function updateButtonsCellSize(targetWidth)
   if not CaveBot.Editor or not CaveBot.Editor.ui or not CaveBot.Editor.ui.buttons then return end
   local b = CaveBot.Editor.ui.buttons
@@ -58,19 +62,47 @@ local function updateButtonsCellSize(targetWidth)
   end
   if w and w > 120 then
     local colWidth = math.floor((w - 4) / 2)
-    b:getLayout():setCellSize({width = colWidth, height = 20})
+    if colWidth ~= lastCellColWidth then
+      lastCellColWidth = colWidth
+      pcall(function()
+        local layout = b:getLayout()
+        if layout and layout.setCellSize then
+          layout:setCellSize({width = colWidth, height = 20})
+        end
+      end)
+    end
   end
 end
 
 CaveBot.Editor.setup = function()
   CaveBot.Editor.ui = UI.createWidget("CaveBotEditorPanel")
   
+  local lastColWidth = 0
+  local updatingLayout = false
   CaveBot.Editor.ui.buttons.onGeometryChange = function(widget, oldRect, newRect)
-    if newRect and newRect.width > 120 then
+    if updatingLayout then return end
+    if not newRect or (oldRect and oldRect.width == newRect.width) then return end
+    if newRect.width > 120 then
       local colWidth = math.floor((newRect.width - 4) / 2)
-      widget:getLayout():setCellSize({width = colWidth, height = 20})
+      if colWidth ~= lastColWidth then
+        lastColWidth = colWidth
+        updatingLayout = true
+        pcall(function()
+          local layout = widget:getLayout()
+          if layout and layout.setCellSize then
+            layout:setCellSize({width = colWidth, height = 20})
+          end
+        end)
+        updatingLayout = false
+      end
     end
   end
+
+  -- Register any actions that were called before setup()
+  for _, pa in ipairs(pendingActions) do
+    CaveBot.Editor.registerAction(pa.action, pa.text, pa.params)
+  end
+  pendingActions = {}
 
   local ui = CaveBot.Editor.ui
   local registerAction = CaveBot.Editor.registerAction

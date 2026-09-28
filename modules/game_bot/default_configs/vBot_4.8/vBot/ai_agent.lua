@@ -1,4 +1,4 @@
-﻿-- ============================================================
+-- ============================================================
 -- HegalOT AI Agent - Modulo Lua del cliente
 -- Lee comandos del agente IA y los ejecuta en el juego
 -- 
@@ -125,6 +125,12 @@ local function executeCommand(action, params)
     local mp = player:getMana()
     local lvl = player:getLevel()
     print(string.format("[AI Agent] HP:%d  MP:%d  Lvl:%d", hp, mp, lvl))
+
+  elseif action == "reload" then
+    if reload then
+      reload()
+      print("[AI Agent] Bot recargado correctamente")
+    end
 
   elseif action == "none" then
     -- No hacer nada

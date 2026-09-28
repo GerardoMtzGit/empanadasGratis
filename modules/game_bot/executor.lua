@@ -101,6 +101,9 @@ function executeBot(config, storage, tabs, msgCallback, saveConfigCallback, relo
     date = os.date,
     clock = os.clock
   }
+  if io then
+    context.io = io
+  end
   context.load = function(str) return assert(load(str, nil, nil, context)) end
   context.loadstring = context.load
   context.assert = assert

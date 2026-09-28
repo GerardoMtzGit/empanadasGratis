@@ -225,31 +225,22 @@ end
 
 updateStatus()
 
-local lastMethod = {}
-
 local function equipItemDirect(item, slot)
   if not item then return false end
-  local itemId = (type(item) == "userdata" or type(item) == "table") and item:getId() or item
-
-  -- En Tibia, los slots de cuerpo (cuello, anillo, etc.) solo aceptan count = 1.
-  -- Si se envia count > 1 (por ejemplo, Stone Skin Amulet con 5 cargas o Might Ring con 20),
-  -- el servidor rechaza el paquete de movimiento. Solo ammo (slot 10) acepta stackables > 1.
+  local itemId = (type(item) == "userdata" or type(item) == "table") and (item.getId and item:getId() or item.id) or item
   local count = (slot == 10 and item.isStackable and item:isStackable() and item:getCount()) or 1
 
-  local method = lastMethod[slot] or 1
-
-  -- Metodo 1: Quick-equip nativo del protocolo (version >= 910)
-  if method == 1 and g_game.getClientVersion and g_game.getClientVersion() >= 910 and g_game.equipItemId then
-    local ok = pcall(function() g_game.equipItemId(itemId) end)
-    lastMethod[slot] = 2
-    if ok then return true end
+  -- Metodo 1: Quick-equip nativo del cliente/servidor por ID
+  if g_game.equipItemId and itemId and tonumber(itemId) then
+    pcall(function() g_game.equipItemId(tonumber(itemId)) end)
   end
 
-  -- Metodo 2: Mover directamente al slot con count = 1 (universal para todos los protocolos)
-  pcall(function()
-    g_game.move(item, {x = 65535, y = slot, z = 0}, count)
-  end)
-  lastMethod[slot] = 1
+  -- Metodo 2: Mover directamente al slot (compatible con 8.60 y todos los protocolos)
+  if type(item) == "userdata" or (type(item) == "table" and item.getId) then
+    pcall(function()
+      g_game.move(item, {x = 65535, y = slot, z = 0}, count)
+    end)
+  end
 
   return true
 end
@@ -297,6 +288,8 @@ macro(80, function()
         equipItemDirect(ssaItem, 2)
         delay(100)
         return
+      elseif g_game.equipItemId then
+        pcall(function() g_game.equipItemId(ssaId) end)
       end
     end
   end
@@ -311,12 +304,16 @@ macro(80, function()
         equipItemDirect(ringItem, 9)
         delay(100)
         return
+      elseif g_game.equipItemId then
+        pcall(function() g_game.equipItemId(ringId) end)
       end
     end
   end
 end)
 
 macro(250, function()
+  if not g_game.isOnline() then return end
+
   local isEmergencyActive = emConfig and emConfig.enabled and ((manapercent() or 100) < (tonumber(emConfig.manaPercent) or 15))
 
   for index, autoEquip in ipairs(storage.autoEquip) do
@@ -337,7 +334,7 @@ macro(250, function()
             local itemToEquip = nil
             local containers = g_game.getContainers()
 
-            -- 1. Buscar en mochilas abiertas
+            -- 1. Buscar en mochilas abiertas (visibles, minimizadas u ocultas)
             for _, container in pairs(containers) do
               for __, item in ipairs(container:getItems()) do
                 if isMatching(item:getId(), id1, id2) then
@@ -354,13 +351,27 @@ macro(250, function()
                 itemToEquip = findItem(id1)
               elseif id2 > 0 and findItem(id2) then
                 itemToEquip = findItem(id2)
+              elseif id1 > 0 and itemTransformPairs[id1] and findItem(itemTransformPairs[id1]) then
+                itemToEquip = findItem(itemTransformPairs[id1])
+              elseif id2 > 0 and itemTransformPairs[id2] and findItem(itemTransformPairs[id2]) then
+                itemToEquip = findItem(itemTransformPairs[id2])
               end
             end
 
+            -- 3. Si encontramos el item en cualquier mochila abierta, equiparlo directamente
             if itemToEquip then
               equipItemDirect(itemToEquip, autoEquip.slot)
-              delay(400) -- Evitar spam de paquetes
+              delay(350) -- Evitar spam de paquetes
               return
+            end
+
+            -- 4. Si NO esta en mochilas abiertas, intentar quick-equip nativo por ID de inmediato
+            local targetId = (id1 > 0 and id1) or id2
+            if targetId > 0 and g_game.equipItemId then
+              pcall(function() g_game.equipItemId(targetId) end)
+              if itemTransformPairs[targetId] then
+                pcall(function() g_game.equipItemId(itemTransformPairs[targetId]) end)
+              end
             end
           end
         end
