@@ -226,9 +226,9 @@ end
 
 -- Preset area runes
 local areaRunes = {
+  { text = "Thunderstorm / Thunderlord", id = 3202 },
   { text = "Great Fireball (GFB)", id = 3191 },
   { text = "Avalanche", id = 3161 },
-  { text = "Thunderstorm", id = 3202 },
   { text = "Stone Shower", id = 3175 },
   { text = "Fire Bomb", id = 3192 },
   { text = "Poison Bomb", id = 3173 },
@@ -668,6 +668,28 @@ local function getBestAreaTarget(aliveMonsters, currentTarget)
     end
   end
 
+  -- Triangle centroids for triads of monsters (finds perfect 3-target center)
+  local triadCount = 0
+  for i = 1, #aliveMonsters do
+    if triadCount > 30 then break end
+    local p1 = aliveMonsters[i]:getPosition()
+    for j = i + 1, #aliveMonsters do
+      if triadCount > 30 then break end
+      local p2 = aliveMonsters[j]:getPosition()
+      for k = j + 1, #aliveMonsters do
+        if triadCount > 30 then break end
+        local p3 = aliveMonsters[k]:getPosition()
+        local maxD = math.max(getDistanceBetween(p1, p2), getDistanceBetween(p2, p3), getDistanceBetween(p1, p3))
+        if maxD <= 6 then
+          local cenX = math.floor((p1.x + p2.x + p3.x) / 3)
+          local cenY = math.floor((p1.y + p2.y + p3.y) / 3)
+          addCandidate({ x = cenX, y = cenY, z = pz }, nil)
+          triadCount = triadCount + 1
+        end
+      end
+    end
+  end
+
   local allSpecs = getSpectators()
   local bestScore = -1
   local bestPos = nil
@@ -731,6 +753,7 @@ local lastWalkApproach = 0
 -- Fast auto-target macro (50ms): immediately attacks first monster seen on screen
 macro(50, function()
   if not config.enabled then return end
+  if storage.druid_targeting and storage.druid_targeting.enabled then return end
   if isInPz() then return end
 
   local pPos = pos()
@@ -771,6 +794,7 @@ end)
 -- Main rune and spell casting loop
 macro(20, function()
   if not config.enabled then return end
+  if storage.druid_targeting and storage.druid_targeting.enabled then return end
   if storage.sdOnly and storage.sdOnly.enabled then return end
   if isInPz() then return end
 

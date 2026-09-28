@@ -24,6 +24,7 @@ local luaFiles = {
   "configs", -- do not change this and above
   "extras",
   "tirar_runa",
+  "druid_targeting",
   "druid_familiar",
   "cavebot",
   "playerlist",
