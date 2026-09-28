@@ -204,7 +204,7 @@ local function createOrUpdateIcon()
     if oldWidget then
       oldWidget:destroy()
     end
-    manaIconWidget = g_ui.createWidget("ManaIconWidget", gameMapPanel)
+    manaIconWidget = g_ui.createWidget("QuickHealIconWidget", gameMapPanel)
     manaIconWidget:setId("manaPotionFloatingIcon")
     manaIconWidget.botWidget = true
 

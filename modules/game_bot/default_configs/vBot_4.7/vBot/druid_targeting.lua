@@ -45,6 +45,11 @@ if config.safePvp == nil then config.safePvp = true end
 if config.prioritizeMana == nil then config.prioritizeMana = true end
 if config.autoTarget == nil then config.autoTarget = true end
 
+-- Helper de tiempo a prueba de fallos
+local function getNow()
+  return now or (g_clock and g_clock.millis and g_clock.millis()) or (os.time() * 1000)
+end
+
 -- Interfaz en la pestaña Target
 local ui = setupUI([[
 Panel
@@ -119,17 +124,33 @@ local function getRuneName(id)
   return runeNames[id] or ("ID:" .. tostring(id))
 end
 
+-- Actualizacion con throttling para prevenir freezes de interfaz
+local lastStatusText = ""
+local lastStatusTime = 0
 local function updateStatus(customText)
+  local nowMs = getNow()
   if customText then
-    ui.status:setText(customText)
-    ui.status:setColor(config.enabled and "#55ff55" or "#a0a0a0")
+    if customText == lastStatusText and (lastStatusTime + 300 > nowMs) then
+      return
+    end
+    lastStatusText = customText
+    lastStatusTime = nowMs
+    pcall(function()
+      ui.status:setText(customText)
+      ui.status:setColor(config.enabled and "#55ff55" or "#a0a0a0")
+    end)
     return
   end
 
   local onText = config.enabled and "[ON]" or "[OFF]"
   local ratioText = string.format("%.1fx", (config.powerRatio or 23) / 10.0)
-  ui.status:setText(string.format("%s Druid High DPS | Ulus / %s", onText, getRuneName(config.areaRuneId)))
-  ui.status:setColor(config.enabled and "#55ff55" or "#a0a0a0")
+  local defText = string.format("%s Druid High DPS | Ulus / %s", onText, getRuneName(config.areaRuneId))
+  lastStatusText = defText
+  lastStatusTime = nowMs
+  pcall(function()
+    ui.status:setText(defText)
+    ui.status:setColor(config.enabled and "#55ff55" or "#a0a0a0")
+  end)
 end
 
 -- Poblar opciones de runas
@@ -274,12 +295,16 @@ local lastFrigoCast = 0
 local lastTeraCast = 0
 local lastRuneCast = 0
 local lastAttack = 0
+local lastAutoTargetTime = 0
 
 -- Escuchar chat para actualizar cooldowns si se tiran manualmente o por hotkeys
 onTalk(function(name, level, mode, text, channelId, pos)
-  if name ~= player:getName() then return end
+  if not g_game.isOnline() or not player then return end
+  local pName = player.getName and player:getName()
+  if not pName or name ~= pName then return end
+
   local phrase = text:lower():trim()
-  local currentNow = now
+  local currentNow = getNow()
 
   if config.ulusSpell and phrase == config.ulusSpell:lower():trim() then
     lastUlusCast = currentNow
@@ -292,13 +317,23 @@ end)
 
 -- Validar si una criatura es un monstruo atacable (excluye jugadores, familiars, summons aliados)
 local function isTargetableCreature(spec)
-  if not spec or spec:isLocalPlayer() then return false end
-  if spec:isPlayer() then return false end
-  if spec:isNpc() then return false end
+  if not spec then return false end
+  local isLocal = false
+  pcall(function() isLocal = spec:isLocalPlayer() end)
+  if isLocal then return false end
 
-  local p = spec:getPosition()
+  local isP = false
+  pcall(function() isP = spec:isPlayer() end)
+  if isP then return false end
+
+  local isN = false
+  pcall(function() isN = spec:isNpc() end)
+  if isN then return false end
+
+  local p = spec.getPosition and spec:getPosition()
   if not p or p.z ~= posz() then return false end
-  local hp = spec:getHealthPercent()
+
+  local hp = spec.getHealthPercent and spec:getHealthPercent()
   if not hp or hp <= 0 then return false end
 
   if isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(spec) then
@@ -322,15 +357,14 @@ local function isTargetableCreature(spec)
   if spec.getMaster and spec:getMaster() ~= nil then return false end
   if spec.isPartyMember and spec:isPartyMember() then return false end
 
-  if spec:isMonster() then return true end
-  if not spec:isPlayer() and not spec:isNpc() then return true end
-
-  return false
+  if spec.isMonster and spec:isMonster() then return true end
+  return true
 end
 
 -- Calculo matematico de daño base esperado por objetivo
 local function getBaseDamage(spellType)
-  local lvl = player:getLevel() or 500
+  if not player then return 100 end
+  local lvl = (player.getLevel and player:getLevel()) or 500
   local ml = (player.getMagicLevel and player:getMagicLevel()) or 100
 
   -- Formula estandar de Runa de Area (Thunderstorm, Avalanche, GFB):
@@ -339,17 +373,13 @@ local function getBaseDamage(spellType)
   if spellType == "rune" then
     return runeBase
   elseif spellType == "ulus" then
-    -- Exevo Ulus Tera: Daño masivo multiplicado por el ratio configurado
     local ratio = (config.powerRatio or 23) / 10.0
     return math.max(100, math.floor(runeBase * ratio))
   elseif spellType == "frigo" then
-    -- Exevo Gran Frigo Hur (Strong Ice Wave): Muy alto daño frontal (~1.9x de runa)
     return math.max(90, math.floor(runeBase * 1.9))
   elseif spellType == "tera" then
-    -- Exevo Tera Hur (Terra Wave): Alto daño de tierra frontal (~1.6x de runa)
     return math.max(80, math.floor(runeBase * 1.6))
   elseif spellType == "single" then
-    -- Strike single target (exori gran tera):
     return math.max(80, math.floor(lvl * 0.20 + ml * 4.2 + 20))
   end
   return runeBase
@@ -357,7 +387,7 @@ end
 
 -- Comprobar si una spell especifica esta disponible (cooldown transcurrido)
 local function isSpellReady(spellKey, cdMs)
-  local currentNow = now
+  local currentNow = getNow()
   local lastCast = 0
   local words = ""
 
@@ -401,6 +431,7 @@ end
 -- 1. EXEVO ULUS TERA: Donut AoE (Area Grande de Radio 6 con centro vacio de 3x3)
 -- "como puedes ver no pega en los 8 sqms pegados al personaje ten en cuenta esto para el calculo"
 local function isInsideUlusDonut(px, py, mx, my)
+  if not mx or not my then return false end
   local dx = mx - px
   local dy = my - py
   local absX = math.abs(dx)
@@ -425,8 +456,8 @@ local function isInsideUlusDonut(px, py, mx, my)
 end
 
 -- 2. EXEVO GRAN FRIGO HUR: Cono de Onda de Hielo (Small Wave 7 SQMs)
--- Direccion: 0: Norte, 1: Este, 2: Sur, 3: Oeste
 local function isInsideGranFrigoHur(px, py, dir, mx, my)
+  if not mx or not my then return false end
   local dx = mx - px
   local dy = my - py
 
@@ -448,6 +479,7 @@ end
 
 -- 3. EXEVO TERA HUR: Onda de Tierra (3x3 Wave / Haz de 5 SQMs, 11 SQMs)
 local function isInsideTeraHur(px, py, dir, mx, my)
+  if not mx or not my then return false end
   local dx = mx - px
   local dy = my - py
 
@@ -469,6 +501,7 @@ end
 
 -- 4. RUNA DE ÁREA BASE (37 SQMs - Thunderlord / Thunderstorm / Avalanche / GFB)
 local function isBlastHit(cx, cy, mx, my)
+  if not mx or not my then return false end
   local dx = math.abs(mx - cx)
   local dy = math.abs(my - cy)
   return (dx <= 3 and dy <= 3) and (dx + dy <= 4 or (dx <= 2 and dy <= 2))
@@ -479,27 +512,20 @@ end
 -- =========================================================================
 
 -- Evaluar monstruos alcanzados por Exevo Ulus Tera (Donut)
-local function evaluateUlusDonut(playerPos, aliveMonsters, allSpecs)
-  local px, py, pz = playerPos.x, playerPos.y, playerPos.z
+local function evaluateUlusDonut(playerPos, aliveMonsters, innocentPlayers)
+  local px, py = playerPos.x, playerPos.y
 
-  -- PVP Seguro: Verificar que ningún jugador inocente o amigo esté en el donut
   if config.safePvp then
-    for _, spec in ipairs(allSpecs) do
-      if not spec:isLocalPlayer() and spec:getPosition().z == pz then
-        local sp = spec:getPosition()
-        if isInsideUlusDonut(px, py, sp.x, sp.y) then
-          if not isTargetableCreature(spec) then
-            return 0 -- Bloqueado para evitar skull / dañar aliados
-          end
-        end
+    for _, inno in ipairs(innocentPlayers) do
+      if isInsideUlusDonut(px, py, inno.pos.x, inno.pos.y) then
+        return 0 -- Bloqueado para evitar skull / dañar aliados
       end
     end
   end
 
   local count = 0
   for _, m in ipairs(aliveMonsters) do
-    local mp = m:getPosition()
-    if isInsideUlusDonut(px, py, mp.x, mp.y) then
+    if isInsideUlusDonut(px, py, m.pos.x, m.pos.y) then
       count = count + 1
     end
   end
@@ -508,24 +534,19 @@ local function evaluateUlusDonut(playerPos, aliveMonsters, allSpecs)
 end
 
 -- Evaluar mejor direccion para Exevo Gran Frigo Hur
-local function evaluateGranFrigoHur(playerPos, aliveMonsters, allSpecs)
-  local px, py, pz = playerPos.x, playerPos.y, playerPos.z
-  local currentDir = player:getDirection()
+local function evaluateGranFrigoHur(playerPos, aliveMonsters, innocentPlayers)
+  local px, py = playerPos.x, playerPos.y
+  local currentDir = (player and player.getDirection and player:getDirection()) or 0
   local bestDir = currentDir
   local maxHits = 0
 
   for dir = 0, 3 do
     local blocked = false
     if config.safePvp then
-      for _, spec in ipairs(allSpecs) do
-        if not spec:isLocalPlayer() and spec:getPosition().z == pz then
-          local sp = spec:getPosition()
-          if isInsideGranFrigoHur(px, py, dir, sp.x, sp.y) then
-            if not isTargetableCreature(spec) then
-              blocked = true
-              break
-            end
-          end
+      for _, inno in ipairs(innocentPlayers) do
+        if isInsideGranFrigoHur(px, py, dir, inno.pos.x, inno.pos.y) then
+          blocked = true
+          break
         end
       end
     end
@@ -533,8 +554,7 @@ local function evaluateGranFrigoHur(playerPos, aliveMonsters, allSpecs)
     if not blocked then
       local count = 0
       for _, m in ipairs(aliveMonsters) do
-        local mp = m:getPosition()
-        if isInsideGranFrigoHur(px, py, dir, mp.x, mp.y) then
+        if isInsideGranFrigoHur(px, py, dir, m.pos.x, m.pos.y) then
           count = count + 1
         end
       end
@@ -550,24 +570,19 @@ local function evaluateGranFrigoHur(playerPos, aliveMonsters, allSpecs)
 end
 
 -- Evaluar mejor direccion para Exevo Tera Hur
-local function evaluateTeraHur(playerPos, aliveMonsters, allSpecs)
-  local px, py, pz = playerPos.x, playerPos.y, playerPos.z
-  local currentDir = player:getDirection()
+local function evaluateTeraHur(playerPos, aliveMonsters, innocentPlayers)
+  local px, py = playerPos.x, playerPos.y
+  local currentDir = (player and player.getDirection and player:getDirection()) or 0
   local bestDir = currentDir
   local maxHits = 0
 
   for dir = 0, 3 do
     local blocked = false
     if config.safePvp then
-      for _, spec in ipairs(allSpecs) do
-        if not spec:isLocalPlayer() and spec:getPosition().z == pz then
-          local sp = spec:getPosition()
-          if isInsideTeraHur(px, py, dir, sp.x, sp.y) then
-            if not isTargetableCreature(spec) then
-              blocked = true
-              break
-            end
-          end
+      for _, inno in ipairs(innocentPlayers) do
+        if isInsideTeraHur(px, py, dir, inno.pos.x, inno.pos.y) then
+          blocked = true
+          break
         end
       end
     end
@@ -575,8 +590,7 @@ local function evaluateTeraHur(playerPos, aliveMonsters, allSpecs)
     if not blocked then
       local count = 0
       for _, m in ipairs(aliveMonsters) do
-        local mp = m:getPosition()
-        if isInsideTeraHur(px, py, dir, mp.x, mp.y) then
+        if isInsideTeraHur(px, py, dir, m.pos.x, m.pos.y) then
           count = count + 1
         end
       end
@@ -591,8 +605,8 @@ local function evaluateTeraHur(playerPos, aliveMonsters, allSpecs)
   return bestDir, maxHits
 end
 
--- Optimizar el disparo de la Runa de Área al cluster con mas monstruos
-local function getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, allSpecs)
+-- Optimizar el disparo de la Runa de Área al cluster con mas monstruos (rapido y seguro)
+local function getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, innocentPlayers)
   local pz = playerPos.z
   local candidatePositions = {}
   local visited = {}
@@ -606,30 +620,32 @@ local function getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, a
     end
   end
 
-  if currentTarget and currentTarget:getPosition().z == pz then
-    addCandidate(currentTarget:getPosition(), currentTarget)
+  if currentTarget then
+    local tp = currentTarget.getPosition and currentTarget:getPosition()
+    if tp and tp.z == pz then
+      addCandidate(tp, currentTarget)
+    end
   end
 
+  -- Añadir cada posicion de monstruo como centro potencial
   for i = 1, #aliveMonsters do
-    local m = aliveMonsters[i]
-    addCandidate(m:getPosition(), m)
+    addCandidate(aliveMonsters[i].pos, aliveMonsters[i].creature)
   end
 
-  -- Puntos medios entre pares de monstruos para maximizar el blast de 37 SQMs
+  -- Puntos medios entre pares de monstruos (hasta max 15 pares para mantener 0 lag)
+  local pairCount = 0
   for i = 1, #aliveMonsters do
-    local p1 = aliveMonsters[i]:getPosition()
+    if pairCount >= 15 then break end
+    local p1 = aliveMonsters[i].pos
     for j = i + 1, #aliveMonsters do
-      local p2 = aliveMonsters[j]:getPosition()
+      if pairCount >= 15 then break end
+      local p2 = aliveMonsters[j].pos
       local dist = math.max(math.abs(p1.x - p2.x), math.abs(p1.y - p2.y))
-      if dist <= 6 then
+      if dist <= 5 then
         local midX = math.floor((p1.x + p2.x) / 2)
         local midY = math.floor((p1.y + p2.y) / 2)
         addCandidate({ x = midX, y = midY, z = pz }, nil)
-        local cX = math.ceil((p1.x + p2.x) / 2)
-        local cY = math.ceil((p1.y + p2.y) / 2)
-        if cX ~= midX or cY ~= midY then
-          addCandidate({ x = cX, y = cY, z = pz }, nil)
-        end
+        pairCount = pairCount + 1
       end
     end
   end
@@ -646,15 +662,10 @@ local function getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, a
       if tile and tile:canShoot() then
         local pvpBlocked = false
         if config.safePvp then
-          for _, spec in ipairs(allSpecs) do
-            if not spec:isLocalPlayer() and spec:getPosition().z == pz then
-              local sp = spec:getPosition()
-              if isBlastHit(cp.x, cp.y, sp.x, sp.y) then
-                if not isTargetableCreature(spec) then
-                  pvpBlocked = true
-                  break
-                end
-              end
+          for _, inno in ipairs(innocentPlayers) do
+            if isBlastHit(cp.x, cp.y, inno.pos.x, inno.pos.y) then
+              pvpBlocked = true
+              break
             end
           end
         end
@@ -662,13 +673,12 @@ local function getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, a
         if not pvpBlocked then
           local hits = 0
           for _, m in ipairs(aliveMonsters) do
-            local mp = m:getPosition()
-            if isBlastHit(cp.x, cp.y, mp.x, mp.y) then
+            if isBlastHit(cp.x, cp.y, m.pos.x, m.pos.y) then
               hits = hits + 1
             end
           end
 
-          local isCurTarget = currentTarget and (cp.x == currentTarget:getPosition().x and cp.y == currentTarget:getPosition().y)
+          local isCurTarget = currentTarget and cand.creature and (cand.creature == currentTarget)
           if hits > bestScore or (hits == bestScore and isCurTarget) then
             bestScore = hits
             bestPos = cp
@@ -722,18 +732,22 @@ local dirNames = { [0] = "North", [1] = "East", [2] = "South", [3] = "West" }
 -- este disponible y solo si de verdad hara mas daño"
 -- =========================================================================
 
--- Macro rápido de auto-target (50ms)
-macro(50, function()
+-- Macro de auto-target (150ms: sin saturar la red ni el hilo principal)
+macro(150, function()
   if not config.enabled then return end
-  if isInPz() then return end
+  if not g_game.isOnline() or not player or isInPz() then return end
   if not config.autoTarget then return end
 
+  local currentNow = getNow()
+  if lastAutoTargetTime + 300 > currentNow then return end
+
   local pPos = pos()
+  if not pPos then return end
   local pz = pPos.z
   local currentTarget = g_game.getAttackingCreature()
 
   if currentTarget then
-    local tPos = currentTarget:getPosition()
+    local tPos = currentTarget.getPosition and currentTarget:getPosition()
     if not tPos or tPos.z ~= pz or currentTarget:getHealthPercent() <= 0 or not isTargetableCreature(currentTarget) then
       if not isTargetableCreature(currentTarget) then
         g_game.cancelAttackAndFollow()
@@ -747,51 +761,71 @@ macro(50, function()
     local closestCreature = nil
     for _, spec in ipairs(getSpectators()) do
       if isTargetableCreature(spec) then
-        local dist = getDistanceBetween(pPos, spec:getPosition())
-        if dist < closestDist and dist <= 7 then
-          closestDist = dist
-          closestCreature = spec
+        local sp = spec.getPosition and spec:getPosition()
+        if sp and sp.z == pz then
+          local dist = getDistanceBetween(pPos, sp)
+          if dist < closestDist and dist <= 7 then
+            closestDist = dist
+            closestCreature = spec
+          end
         end
       end
     end
     if closestCreature then
       g_game.attack(closestCreature)
+      lastAutoTargetTime = currentNow
     end
   end
 end)
 
--- Macro principal de ataque y decisión de máximo daño (20ms)
-macro(20, function()
+-- Macro principal de ataque y decisión de máximo daño (100ms)
+macro(100, function()
   if not config.enabled then return end
-  if isInPz() then return end
+  if not g_game.isOnline() or not player or isInPz() then return end
+
+  local currentNow = getNow()
+  local delayMs = tonumber(config.delay) or 201
+
+  -- Cooldown de ataque respetado antes de hacer cualquier cálculo
+  if lastAttack + delayMs > currentNow then return end
 
   -- Priorizar tener >20% de mana antes de gastar en ataques masivos
   if config.prioritizeMana and (manapercent() or 100) <= 20 then
     updateStatus("[MANA BAJA] Priorizando curacion (>20% MP)")
+    lastAttack = currentNow - delayMs + 200
     return
   end
 
-  local currentNow = now
-  local delayMs = tonumber(config.delay) or 201
-  if lastAttack + delayMs > currentNow then return end
-
   local playerPos = pos()
+  if not playerPos then return end
   local pz = playerPos.z
   local allSpecs = getSpectators()
 
-  -- Recopilar monstruos vivos en rango
+  -- Clasificar espectadores EN UN SOLO PASE limpio
   local aliveMonsters = {}
+  local innocentPlayers = {}
+
   for _, spec in ipairs(allSpecs) do
-    if isTargetableCreature(spec) then
-      local dist = getDistanceBetween(playerPos, spec:getPosition())
-      if dist <= 7 then
-        table.insert(aliveMonsters, spec)
+    local sp = spec and spec.getPosition and spec:getPosition()
+    if sp and sp.z == pz then
+      if isTargetableCreature(spec) then
+        local dist = getDistanceBetween(playerPos, sp)
+        if dist <= 7 then
+          table.insert(aliveMonsters, { creature = spec, pos = sp })
+        end
+      else
+        local isLocal = false
+        pcall(function() isLocal = spec:isLocalPlayer() end)
+        if not isLocal then
+          table.insert(innocentPlayers, { creature = spec, pos = sp })
+        end
       end
     end
   end
 
   if #aliveMonsters == 0 then
     updateStatus("[WAITING] Sin monstruos en rango")
+    lastAttack = currentNow - delayMs + 200
     return
   end
 
@@ -801,7 +835,7 @@ macro(20, function()
     currentTarget = nil
   end
   if not currentTarget and #aliveMonsters > 0 then
-    currentTarget = aliveMonsters[1]
+    currentTarget = aliveMonsters[1].creature
     g_game.attack(currentTarget)
   end
 
@@ -809,7 +843,7 @@ macro(20, function()
   -- 1. BASELINE: CALCULAR DAÑO TOTAL DE LA RUNA DE ÁREA
   -- =======================================================================
   local baseRuneDmg = getBaseDamage("rune")
-  local bestRunePos, bestRuneCreature, runeHits = getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, allSpecs)
+  local bestRunePos, bestRuneCreature, runeHits = getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, innocentPlayers)
   runeHits = math.max(0, runeHits or 0)
   local totalRuneDmg = runeHits * baseRuneDmg
 
@@ -824,7 +858,7 @@ macro(20, function()
   local totalUlusDmg = 0
 
   if ulusReady then
-    ulusHits = evaluateUlusDonut(playerPos, aliveMonsters, allSpecs)
+    ulusHits = evaluateUlusDonut(playerPos, aliveMonsters, innocentPlayers)
     totalUlusDmg = ulusHits * baseUlusDmg
   end
 
@@ -832,11 +866,11 @@ macro(20, function()
   local frigoReady, frigoCdRemain = isSpellReady("frigo", config.frigoCooldown or 8000)
   local baseFrigoDmg = getBaseDamage("frigo")
   local frigoHits = 0
-  local bestFrigoDir = player:getDirection()
+  local bestFrigoDir = (player and player.getDirection and player:getDirection()) or 0
   local totalFrigoDmg = 0
 
   if config.useFrigoHur and frigoReady then
-    bestFrigoDir, frigoHits = evaluateGranFrigoHur(playerPos, aliveMonsters, allSpecs)
+    bestFrigoDir, frigoHits = evaluateGranFrigoHur(playerPos, aliveMonsters, innocentPlayers)
     totalFrigoDmg = frigoHits * baseFrigoDmg
   end
 
@@ -844,11 +878,11 @@ macro(20, function()
   local teraReady, teraCdRemain = isSpellReady("tera", config.teraCooldown or 4000)
   local baseTeraDmg = getBaseDamage("tera")
   local teraHits = 0
-  local bestTeraDir = player:getDirection()
+  local bestTeraDir = (player and player.getDirection and player:getDirection()) or 0
   local totalTeraDmg = 0
 
   if config.useTeraHur and teraReady then
-    bestTeraDir, teraHits = evaluateTeraHur(playerPos, aliveMonsters, allSpecs)
+    bestTeraDir, teraHits = evaluateTeraHur(playerPos, aliveMonsters, innocentPlayers)
     totalTeraDmg = teraHits * baseTeraDmg
   end
 
@@ -858,7 +892,7 @@ macro(20, function()
   local bestSpellKey = nil
   local maxSpellDmg = 0
   local bestSpellHits = 0
-  local bestSpellDir = player:getDirection()
+  local bestSpellDir = (player and player.getDirection and player:getDirection()) or 0
   local bestSpellWords = ""
 
   -- Candidato 1: Ulus
@@ -956,9 +990,9 @@ macro(20, function()
   -- =======================================================================
   -- 5. FALLBACK: SINGLE TARGET (1 monstruo aislado o remate)
   -- =======================================================================
-  local singleTarget = currentTarget or aliveMonsters[1]
+  local singleTarget = currentTarget or aliveMonsters[1].creature
   if singleTarget and isTargetableCreature(singleTarget) then
-    local tPos = singleTarget:getPosition()
+    local tPos = singleTarget.getPosition and singleTarget:getPosition()
     if tPos and tPos.z == pz then
       local dist = getDistanceBetween(playerPos, tPos)
       if dist <= 5 then
@@ -976,4 +1010,7 @@ macro(20, function()
       end
     end
   end
+
+  -- Si no se realizo ningun ataque en este ciclo, evitar busy-loop inmediato
+  lastAttack = currentNow - delayMs + 100
 end)

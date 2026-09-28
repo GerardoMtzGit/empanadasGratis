@@ -333,12 +333,12 @@ Panel
       font: verdana-11px-rounded
       text-align: center
 
-    BotCheckBox
+    CheckBox
       id: autoTarget
       anchors.right: parent.right
       anchors.verticalCenter: parent.verticalCenter
       text: Auto-Target
-      font: verdana-11px-rounded
+      font: cipsoftFont
 
   Button
     id: resetPosBtn
