@@ -7,57 +7,43 @@ if not storage[panelName] then
   storage[panelName] = {
     enabled = false,
     ulusSpell = "exevo ulus tera",
-    ulusCooldown = 4000, -- Cooldown en ms
-    ulusShape = 1,       -- 1: Onda Frontal (Wave con auto-giro), 2: Area 360 (UE), 3: Auto
-    areaRuneId = 3202,   -- Thunderstorm / Thunderlord
+    ulusCooldown = 4000,   -- Cooldown en ms
+    useFrigoHur = true,
+    frigoSpell = "exevo gran frigo hur",
+    frigoCooldown = 8000,  -- Cooldown en ms
+    useTeraHur = true,
+    teraSpell = "exevo tera hur",
+    teraCooldown = 4000,   -- Cooldown en ms
+    areaRuneId = 3202,     -- Thunderstorm / Thunderlord
     singleSpell = "exori gran tera",
-    powerRatio = 22,     -- 2.2x ratio de potencia Ulus vs Runa
-    delay = 201,         -- 201 ms delay entre ataques
-    autoTurn = true,     -- Acomodar direccion para onda
-    autoStep = false,    -- Acomodar paso de 1 SQM si gana >= 2 monstruos
-    safePvp = true,      -- No dañar jugadores ni aliados
-    ignoreParty = true,  -- Ignorar party y familiars aliados
+    powerRatio = 23,       -- 2.3x ratio de potencia Ulus vs Runa
+    delay = 201,           -- 201 ms delay entre ataques
+    autoTurn = true,       -- Auto-girar en waves hacia donde haga mas daño
+    safePvp = true,        -- No dañar jugadores ni aliados
     prioritizeMana = true, -- Reservar >20% de mana para curarse
-    autoTarget = true    -- Atacar al mas cercano si no hay target
+    autoTarget = true      -- Atacar al mas cercano si no hay target
   }
 end
 
 local config = storage[panelName]
 
 -- Validaciones de configuracion
-if not config.ulusSpell or config.ulusSpell == "" then
-  config.ulusSpell = "exevo ulus tera"
-end
-if not config.ulusCooldown or config.ulusCooldown <= 0 then
-  config.ulusCooldown = 4000
-end
-if not config.ulusShape then
-  config.ulusShape = 1
-end
-if not config.areaRuneId or config.areaRuneId <= 0 then
-  config.areaRuneId = 3202
-end
-if not config.singleSpell or config.singleSpell == "" then
-  config.singleSpell = "exori gran tera"
-end
-if not config.powerRatio then
-  config.powerRatio = 22
-end
-if not config.delay or config.delay <= 0 then
-  config.delay = 201
-end
-if config.autoTurn == nil then
-  config.autoTurn = true
-end
-if config.safePvp == nil then
-  config.safePvp = true
-end
-if config.prioritizeMana == nil then
-  config.prioritizeMana = true
-end
-if config.autoTarget == nil then
-  config.autoTarget = true
-end
+if not config.ulusSpell or config.ulusSpell == "" then config.ulusSpell = "exevo ulus tera" end
+if not config.ulusCooldown or config.ulusCooldown <= 0 then config.ulusCooldown = 4000 end
+if config.useFrigoHur == nil then config.useFrigoHur = true end
+if not config.frigoSpell or config.frigoSpell == "" then config.frigoSpell = "exevo gran frigo hur" end
+if not config.frigoCooldown or config.frigoCooldown <= 0 then config.frigoCooldown = 8000 end
+if config.useTeraHur == nil then config.useTeraHur = true end
+if not config.teraSpell or config.teraSpell == "" then config.teraSpell = "exevo tera hur" end
+if not config.teraCooldown or config.teraCooldown <= 0 then config.teraCooldown = 4000 end
+if not config.areaRuneId or config.areaRuneId <= 0 then config.areaRuneId = 3202 end
+if not config.singleSpell or config.singleSpell == "" then config.singleSpell = "exori gran tera" end
+if not config.powerRatio then config.powerRatio = 23 end
+if not config.delay or config.delay <= 0 then config.delay = 201 end
+if config.autoTurn == nil then config.autoTurn = true end
+if config.safePvp == nil then config.safePvp = true end
+if config.prioritizeMana == nil then config.prioritizeMana = true end
+if config.autoTarget == nil then config.autoTarget = true end
 
 -- Interfaz en la pestaña Target
 local ui = setupUI([[
@@ -141,19 +127,9 @@ local function updateStatus(customText)
   end
 
   local onText = config.enabled and "[ON]" or "[OFF]"
-  local ratioText = string.format("%.1fx", (config.powerRatio or 22) / 10.0)
-  ui.status:setText(string.format("%s Druid DPS | Ulus / %s (Ratio %s)", onText, getRuneName(config.areaRuneId), ratioText))
+  local ratioText = string.format("%.1fx", (config.powerRatio or 23) / 10.0)
+  ui.status:setText(string.format("%s Druid High DPS | Ulus / %s", onText, getRuneName(config.areaRuneId)))
   ui.status:setColor(config.enabled and "#55ff55" or "#a0a0a0")
-end
-
--- Poblar opciones de formas de spell
-local shapeOptions = {
-  { text = "Onda Frontal / Wave (Auto-Acomodar giro)", id = 1 },
-  { text = "Area Grande 360 (UE / Mas Tera)", id = 2 },
-  { text = "Auto (Elige mejor dano)", id = 3 }
-}
-for _, opt in ipairs(shapeOptions) do
-  druidWindow.ulusShapeCombo:addOption(opt.text, opt.id)
 end
 
 -- Poblar opciones de runas
@@ -168,33 +144,71 @@ for _, r in ipairs(areaRuneOptions) do
 end
 
 -- Sincronizar UI con Storage
-druidWindow.ulusSpell:setText(config.ulusSpell)
+druidWindow.ulusSpell:setText(config.ulusSpell or "exevo ulus tera")
 druidWindow.ulusCooldown:setText(tostring(config.ulusCooldown or 4000))
-druidWindow.singleSpell:setText(config.singleSpell)
-druidWindow.powerRatio:setValue(config.powerRatio or 22)
-druidWindow.ratioLabel:setText(string.format("Potencia Ulus vs Runa (Ratio x): %.1fx", (config.powerRatio or 22) / 10.0))
+
+druidWindow.useFrigoHur:setChecked(config.useFrigoHur)
+druidWindow.frigoSpell:setText(config.frigoSpell or "exevo gran frigo hur")
+druidWindow.frigoCooldown:setText(tostring(config.frigoCooldown or 8000))
+
+druidWindow.useTeraHur:setChecked(config.useTeraHur)
+druidWindow.teraSpell:setText(config.teraSpell or "exevo tera hur")
+druidWindow.teraCooldown:setText(tostring(config.teraCooldown or 4000))
+
+druidWindow.areaRuneCombo:setCurrentOptionByData(config.areaRuneId or 3202)
+druidWindow.singleSpell:setText(config.singleSpell or "exori gran tera")
+druidWindow.powerRatio:setValue(config.powerRatio or 23)
+druidWindow.ratioLabel:setText(string.format("Multiplicador Dano Ulus vs Runa: %.1fx", (config.powerRatio or 23) / 10.0))
+
 druidWindow.delay:setValue(config.delay or 201)
 druidWindow.delayLabel:setText(string.format("Delay entre ataques: %d ms", config.delay or 201))
+
 druidWindow.autoTurn:setChecked(config.autoTurn)
-druidWindow.autoStep:setChecked(config.autoStep)
 druidWindow.safePvp:setChecked(config.safePvp)
 druidWindow.prioritizeMana:setChecked(config.prioritizeMana)
 
 -- Callbacks de UI
 druidWindow.ulusSpell.onTextChange = function(widget, text)
   config.ulusSpell = text:trim()
-  updateStatus()
 end
 
 druidWindow.ulusCooldown.onTextChange = function(widget, text)
-  local n = tonumber(text)
-  if n and n >= 500 then
-    config.ulusCooldown = n
+  local val = tonumber(text:trim())
+  if val and val > 0 then
+    config.ulusCooldown = val
   end
 end
 
-druidWindow.ulusShapeCombo.onOptionChange = function(widget, text, data)
-  config.ulusShape = data
+druidWindow.useFrigoHur.onClick = function(widget)
+  config.useFrigoHur = not config.useFrigoHur
+  widget:setChecked(config.useFrigoHur)
+end
+
+druidWindow.frigoSpell.onTextChange = function(widget, text)
+  config.frigoSpell = text:trim()
+end
+
+druidWindow.frigoCooldown.onTextChange = function(widget, text)
+  local val = tonumber(text:trim())
+  if val and val > 0 then
+    config.frigoCooldown = val
+  end
+end
+
+druidWindow.useTeraHur.onClick = function(widget)
+  config.useTeraHur = not config.useTeraHur
+  widget:setChecked(config.useTeraHur)
+end
+
+druidWindow.teraSpell.onTextChange = function(widget, text)
+  config.teraSpell = text:trim()
+end
+
+druidWindow.teraCooldown.onTextChange = function(widget, text)
+  local val = tonumber(text:trim())
+  if val and val > 0 then
+    config.teraCooldown = val
+  end
 end
 
 druidWindow.areaRuneCombo.onOptionChange = function(widget, text, data)
@@ -208,7 +222,7 @@ end
 
 druidWindow.powerRatio.onValueChange = function(widget, value)
   config.powerRatio = value
-  druidWindow.ratioLabel:setText(string.format("Potencia Ulus vs Runa (Ratio x): %.1fx", value / 10.0))
+  druidWindow.ratioLabel:setText(string.format("Multiplicador Dano Ulus vs Runa: %.1fx", value / 10.0))
   updateStatus()
 end
 
@@ -220,11 +234,6 @@ end
 druidWindow.autoTurn.onClick = function(widget)
   config.autoTurn = not config.autoTurn
   widget:setChecked(config.autoTurn)
-end
-
-druidWindow.autoStep.onClick = function(widget)
-  config.autoStep = not config.autoStep
-  widget:setChecked(config.autoStep)
 end
 
 druidWindow.safePvp.onClick = function(widget)
@@ -257,13 +266,29 @@ end
 updateStatus()
 
 -- =========================================================================
--- ALGORITMOS MATEMÁTICOS DE DAÑO, GEOMETRÍA Y ACOMODAMIENTO
+-- ALGORITMOS MATEMÁTICOS DE DAÑO, GEOMETRÍA Y COOLDOWNS
 -- =========================================================================
 
 local lastUlusCast = 0
+local lastFrigoCast = 0
+local lastTeraCast = 0
 local lastRuneCast = 0
 local lastAttack = 0
-local lastStepReposition = 0
+
+-- Escuchar chat para actualizar cooldowns si se tiran manualmente o por hotkeys
+onTalk(function(name, level, mode, text, channelId, pos)
+  if name ~= player:getName() then return end
+  local phrase = text:lower():trim()
+  local currentNow = now
+
+  if config.ulusSpell and phrase == config.ulusSpell:lower():trim() then
+    lastUlusCast = currentNow
+  elseif config.frigoSpell and phrase == config.frigoSpell:lower():trim() then
+    lastFrigoCast = currentNow
+  elseif config.teraSpell and phrase == config.teraSpell:lower():trim() then
+    lastTeraCast = currentNow
+  end
+end)
 
 -- Validar si una criatura es un monstruo atacable (excluye jugadores, familiars, summons aliados)
 local function isTargetableCreature(spec)
@@ -303,47 +328,64 @@ local function isTargetableCreature(spec)
   return false
 end
 
--- Calculo matematico de daño esperado por objetivo
+-- Calculo matematico de daño base esperado por objetivo
 local function getBaseDamage(spellType)
   local lvl = player:getLevel() or 500
   local ml = (player.getMagicLevel and player:getMagicLevel()) or 100
 
+  -- Formula estandar de Runa de Area (Thunderstorm, Avalanche, GFB):
+  local runeBase = math.max(50, math.floor(lvl * 0.15 + ml * 2.8 + 15))
+
   if spellType == "rune" then
-    -- Formula estandar de Runa de Area (Thunderstorm, Avalanche, GFB):
-    -- Dmg medio = (Level * 0.15) + (MagicLevel * 2.8) + 15
-    return math.max(50, math.floor(lvl * 0.15 + ml * 2.8 + 15))
+    return runeBase
   elseif spellType == "ulus" then
-    -- Formula de Spell Ulus de alto impacto:
-    -- Multiplicada por el ratio de potencia configurado (ej: 2.2x)
-    local ratio = (config.powerRatio or 22) / 10.0
-    local runeDmg = lvl * 0.15 + ml * 2.8 + 15
-    return math.max(100, math.floor(runeDmg * ratio))
+    -- Exevo Ulus Tera: Daño masivo multiplicado por el ratio configurado
+    local ratio = (config.powerRatio or 23) / 10.0
+    return math.max(100, math.floor(runeBase * ratio))
+  elseif spellType == "frigo" then
+    -- Exevo Gran Frigo Hur (Strong Ice Wave): Muy alto daño frontal (~1.9x de runa)
+    return math.max(90, math.floor(runeBase * 1.9))
+  elseif spellType == "tera" then
+    -- Exevo Tera Hur (Terra Wave): Alto daño de tierra frontal (~1.6x de runa)
+    return math.max(80, math.floor(runeBase * 1.6))
   elseif spellType == "single" then
-    -- Formula de Spell Single Strike (exori gran tera):
+    -- Strike single target (exori gran tera):
     return math.max(80, math.floor(lvl * 0.20 + ml * 4.2 + 20))
   end
-  return 100
+  return runeBase
 end
 
--- Comprobar disponibilidad de cooldown para Exevo Ulus Tera
-local function isUlusReady()
+-- Comprobar si una spell especifica esta disponible (cooldown transcurrido)
+local function isSpellReady(spellKey, cdMs)
   local currentNow = now
-  local cd = tonumber(config.ulusCooldown) or 4000
+  local lastCast = 0
+  local words = ""
 
-  -- 1. Cooldown interno por temporizador
-  if lastUlusCast + cd > currentNow then
-    local remaining = math.max(0.1, (lastUlusCast + cd - currentNow) / 1000.0)
+  if spellKey == "ulus" then
+    lastCast = lastUlusCast
+    words = config.ulusSpell
+  elseif spellKey == "frigo" then
+    lastCast = lastFrigoCast
+    words = config.frigoSpell
+  elseif spellKey == "tera" then
+    lastCast = lastTeraCast
+    words = config.teraSpell
+  end
+
+  -- 1. Cooldown interno
+  if lastCast + cdMs > currentNow then
+    local remaining = math.max(0.1, (lastCast + cdMs - currentNow) / 1000.0)
     return false, remaining
   end
 
-  -- 2. Cooldown via canCast de vlib si esta registrado
-  if canCast and not canCast(config.ulusSpell, false, false) then
+  -- 2. canCast de vlib si esta registrado
+  if canCast and words ~= "" and not canCast(words, false, false) then
     return false, 0.5
   end
 
-  -- 3. Cooldown via gamelib cooldown icons
-  if modules.game_cooldown and getSpellData then
-    local data = getSpellData(config.ulusSpell)
+  -- 3. Icono de cooldown en gamelib si existe
+  if modules.game_cooldown and getSpellData and words ~= "" then
+    local data = getSpellData(words)
     if data and data.id and modules.game_cooldown.isCooldownIconActive(data.id) then
       return false, 0.5
     end
@@ -352,117 +394,102 @@ local function isUlusReady()
   return true, 0
 end
 
--- Geometria de la Onda Frontal (Wave) segun direccion (0: Norte, 1: Este, 2: Sur, 3: Oeste)
-local function isInsideWave(px, py, dir, mx, my)
+-- =========================================================================
+-- GEOMETRÍA EXACTA DE SPELLS Y ÁREAS
+-- =========================================================================
+
+-- 1. EXEVO ULUS TERA: Donut AoE (Area Grande de Radio 6 con centro vacio de 3x3)
+-- "como puedes ver no pega en los 8 sqms pegados al personaje ten en cuenta esto para el calculo"
+local function isInsideUlusDonut(px, py, mx, my)
+  local dx = mx - px
+  local dy = my - py
+  local absX = math.abs(dx)
+  local absY = math.abs(dy)
+
+  -- EL CENTRO VACÍO: Los 8 SQMs pegados al personaje y la casilla del personaje NO reciben daño
+  if absX <= 1 and absY <= 1 then
+    return false
+  end
+
+  -- CÍRCULO EXTERIOR: Area Grande de 13x13 (Radio 6 exacto)
+  if absY == 0 then return absX <= 6
+  elseif absY == 1 then return absX <= 5
+  elseif absY == 2 then return absX <= 4
+  elseif absY == 3 then return absX <= 3
+  elseif absY == 4 then return absX <= 2
+  elseif absY == 5 then return absX <= 1
+  elseif absY == 6 then return absX == 0
+  end
+
+  return false
+end
+
+-- 2. EXEVO GRAN FRIGO HUR: Cono de Onda de Hielo (Small Wave 7 SQMs)
+-- Direccion: 0: Norte, 1: Este, 2: Sur, 3: Oeste
+local function isInsideGranFrigoHur(px, py, dir, mx, my)
   local dx = mx - px
   local dy = my - py
 
-  if dir == 0 then -- Norte (arriba, dy < 0)
-    local distY = -dy
-    if distY < 1 or distY > 5 then return false end
-    if distY <= 2 then
-      return math.abs(dx) <= 1
-    elseif distY <= 4 then
-      return math.abs(dx) <= 2
-    else
-      return math.abs(dx) <= 1
-    end
-  elseif dir == 1 then -- Este (derecha, dx > 0)
-    local distX = dx
-    if distX < 1 or distX > 5 then return false end
-    if distX <= 2 then
-      return math.abs(dy) <= 1
-    elseif distX <= 4 then
-      return math.abs(dy) <= 2
-    else
-      return math.abs(dy) <= 1
-    end
-  elseif dir == 2 then -- Sur (abajo, dy > 0)
-    local distY = dy
-    if distY < 1 or distY > 5 then return false end
-    if distY <= 2 then
-      return math.abs(dx) <= 1
-    elseif distY <= 4 then
-      return math.abs(dx) <= 2
-    else
-      return math.abs(dx) <= 1
-    end
-  elseif dir == 3 then -- Oeste (izquierda, dx < 0)
-    local distX = -dx
-    if distX < 1 or distX > 5 then return false end
-    if distX <= 2 then
-      return math.abs(dy) <= 1
-    elseif distX <= 4 then
-      return math.abs(dy) <= 2
-    else
-      return math.abs(dy) <= 1
-    end
+  if dir == 0 then -- Norte (dy < 0)
+    if dx == 0 and dy == -1 then return true end
+    if (dy == -2 or dy == -3) and math.abs(dx) <= 1 then return true end
+  elseif dir == 1 then -- Este (dx > 0)
+    if dy == 0 and dx == 1 then return true end
+    if (dx == 2 or dx == 3) and math.abs(dy) <= 1 then return true end
+  elseif dir == 2 then -- Sur (dy > 0)
+    if dx == 0 and dy == 1 then return true end
+    if (dy == 2 or dy == 3) and math.abs(dx) <= 1 then return true end
+  elseif dir == 3 then -- Oeste (dx < 0)
+    if dy == 0 and dx == -1 then return true end
+    if (dx == -2 or dx == -3) and math.abs(dy) <= 1 then return true end
   end
   return false
 end
 
--- Geometria de Area 360° (centrada en el jugador)
-local function isInsideArea360(px, py, mx, my, radius)
-  radius = radius or 4
-  local dx = math.abs(mx - px)
-  local dy = math.abs(my - py)
-  return (dx <= radius and dy <= radius) and (dx + dy <= radius + 2)
-end
+-- 3. EXEVO TERA HUR: Onda de Tierra (3x3 Wave / Haz de 5 SQMs, 11 SQMs)
+local function isInsideTeraHur(px, py, dir, mx, my)
+  local dx = mx - px
+  local dy = my - py
 
--- Evaluar direccion optima para Onda Frontal (Wave) y calcular monstruos alcanzados
-local function evaluateWaveDirection(playerPos, aliveMonsters, allSpecs)
-  local px, py, pz = playerPos.x, playerPos.y, playerPos.z
-  local currentDir = player:getDirection()
-  local bestDir = currentDir
-  local maxHits = 0
-  local dirHits = { [0] = 0, [1] = 0, [2] = 0, [3] = 0 }
-
-  for dir = 0, 3 do
-    local blockedBySafe = false
-    if config.safePvp then
-      for _, spec in ipairs(allSpecs) do
-        if not spec:isLocalPlayer() and spec:getPosition().z == pz then
-          local sp = spec:getPosition()
-          if isInsideWave(px, py, dir, sp.x, sp.y) then
-            if not isTargetableCreature(spec) then
-              blockedBySafe = true
-              break
-            end
-          end
-        end
-      end
-    end
-
-    if not blockedBySafe then
-      local count = 0
-      for _, m in ipairs(aliveMonsters) do
-        local mp = m:getPosition()
-        if isInsideWave(px, py, dir, mp.x, mp.y) then
-          count = count + 1
-        end
-      end
-      dirHits[dir] = count
-      if count > maxHits or (count == maxHits and dir == currentDir) then
-        maxHits = count
-        bestDir = dir
-      end
-    end
+  if dir == 0 then -- Norte (dy < 0)
+    if dx == 0 and (dy == -1 or dy == -2) then return true end
+    if (dy >= -5 and dy <= -3) and math.abs(dx) <= 1 then return true end
+  elseif dir == 1 then -- Este (dx > 0)
+    if dy == 0 and (dx == 1 or dx == 2) then return true end
+    if (dx >= 3 and dx <= 5) and math.abs(dy) <= 1 then return true end
+  elseif dir == 2 then -- Sur (dy > 0)
+    if dx == 0 and (dy == 1 or dy == 2) then return true end
+    if (dy >= 3 and dy <= 5) and math.abs(dy) <= 1 then return true end
+  elseif dir == 3 then -- Oeste (dx < 0)
+    if dy == 0 and (dx == -1 or dx == -2) then return true end
+    if (dx >= -5 and dx <= -3) and math.abs(dy) <= 1 then return true end
   end
-
-  return bestDir, maxHits, dirHits
+  return false
 end
 
--- Evaluar Area 360° para Ulus
-local function evaluateArea360(playerPos, aliveMonsters, allSpecs)
+-- 4. RUNA DE ÁREA BASE (37 SQMs - Thunderlord / Thunderstorm / Avalanche / GFB)
+local function isBlastHit(cx, cy, mx, my)
+  local dx = math.abs(mx - cx)
+  local dy = math.abs(my - cy)
+  return (dx <= 3 and dy <= 3) and (dx + dy <= 4 or (dx <= 2 and dy <= 2))
+end
+
+-- =========================================================================
+-- EVALUADORES DE OBJETIVOS CON PROTECCIÓN PVP
+-- =========================================================================
+
+-- Evaluar monstruos alcanzados por Exevo Ulus Tera (Donut)
+local function evaluateUlusDonut(playerPos, aliveMonsters, allSpecs)
   local px, py, pz = playerPos.x, playerPos.y, playerPos.z
 
+  -- PVP Seguro: Verificar que ningún jugador inocente o amigo esté en el donut
   if config.safePvp then
     for _, spec in ipairs(allSpecs) do
       if not spec:isLocalPlayer() and spec:getPosition().z == pz then
         local sp = spec:getPosition()
-        if isInsideArea360(px, py, sp.x, sp.y, 4) then
+        if isInsideUlusDonut(px, py, sp.x, sp.y) then
           if not isTargetableCreature(spec) then
-            return 0 -- Bloqueado por PVP
+            return 0 -- Bloqueado para evitar skull / dañar aliados
           end
         end
       end
@@ -472,7 +499,7 @@ local function evaluateArea360(playerPos, aliveMonsters, allSpecs)
   local count = 0
   for _, m in ipairs(aliveMonsters) do
     local mp = m:getPosition()
-    if isInsideArea360(px, py, mp.x, mp.y, 4) then
+    if isInsideUlusDonut(px, py, mp.x, mp.y) then
       count = count + 1
     end
   end
@@ -480,14 +507,91 @@ local function evaluateArea360(playerPos, aliveMonsters, allSpecs)
   return count
 end
 
--- Geometria de la Runa de Area (37 SQMs - Thunderstorm / Avalanche / GFB)
-local function isBlastHit(cx, cy, mx, my)
-  local dx = math.abs(mx - cx)
-  local dy = math.abs(my - cy)
-  return (dx <= 3 and dy <= 3) and (dx + dy <= 4 or (dx <= 2 and dy <= 2))
+-- Evaluar mejor direccion para Exevo Gran Frigo Hur
+local function evaluateGranFrigoHur(playerPos, aliveMonsters, allSpecs)
+  local px, py, pz = playerPos.x, playerPos.y, playerPos.z
+  local currentDir = player:getDirection()
+  local bestDir = currentDir
+  local maxHits = 0
+
+  for dir = 0, 3 do
+    local blocked = false
+    if config.safePvp then
+      for _, spec in ipairs(allSpecs) do
+        if not spec:isLocalPlayer() and spec:getPosition().z == pz then
+          local sp = spec:getPosition()
+          if isInsideGranFrigoHur(px, py, dir, sp.x, sp.y) then
+            if not isTargetableCreature(spec) then
+              blocked = true
+              break
+            end
+          end
+        end
+      end
+    end
+
+    if not blocked then
+      local count = 0
+      for _, m in ipairs(aliveMonsters) do
+        local mp = m:getPosition()
+        if isInsideGranFrigoHur(px, py, dir, mp.x, mp.y) then
+          count = count + 1
+        end
+      end
+
+      if count > maxHits or (count == maxHits and dir == currentDir) then
+        maxHits = count
+        bestDir = dir
+      end
+    end
+  end
+
+  return bestDir, maxHits
 end
 
--- Optimizar el centro de la runa de area para golpear al maximo numero de monstruos
+-- Evaluar mejor direccion para Exevo Tera Hur
+local function evaluateTeraHur(playerPos, aliveMonsters, allSpecs)
+  local px, py, pz = playerPos.x, playerPos.y, playerPos.z
+  local currentDir = player:getDirection()
+  local bestDir = currentDir
+  local maxHits = 0
+
+  for dir = 0, 3 do
+    local blocked = false
+    if config.safePvp then
+      for _, spec in ipairs(allSpecs) do
+        if not spec:isLocalPlayer() and spec:getPosition().z == pz then
+          local sp = spec:getPosition()
+          if isInsideTeraHur(px, py, dir, sp.x, sp.y) then
+            if not isTargetableCreature(spec) then
+              blocked = true
+              break
+            end
+          end
+        end
+      end
+    end
+
+    if not blocked then
+      local count = 0
+      for _, m in ipairs(aliveMonsters) do
+        local mp = m:getPosition()
+        if isInsideTeraHur(px, py, dir, mp.x, mp.y) then
+          count = count + 1
+        end
+      end
+
+      if count > maxHits or (count == maxHits and dir == currentDir) then
+        maxHits = count
+        bestDir = dir
+      end
+    end
+  end
+
+  return bestDir, maxHits
+end
+
+-- Optimizar el disparo de la Runa de Área al cluster con mas monstruos
 local function getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, allSpecs)
   local pz = playerPos.z
   local candidatePositions = {}
@@ -511,7 +615,7 @@ local function getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, a
     addCandidate(m:getPosition(), m)
   end
 
-  -- Puntos medios entre pares de monstruos
+  -- Puntos medios entre pares de monstruos para maximizar el blast de 37 SQMs
   for i = 1, #aliveMonsters do
     local p1 = aliveMonsters[i]:getPosition()
     for j = i + 1, #aliveMonsters do
@@ -610,11 +714,12 @@ local function shootRune(runeId, targetThing)
   return ok
 end
 
--- Direcciones legibles
 local dirNames = { [0] = "North", [1] = "East", [2] = "South", [3] = "West" }
 
 -- =========================================================================
--- MOTOR PRINCIPAL DE TARGETING Y DECISIÓN DE DAÑO (HIGH DPS)
+-- MOTOR PRINCIPAL: DECISIÓN MATEMÁTICA DE ALTO DPS
+-- "en teoria es siempre tira la runa hasta que alguna spell que haga mas daño
+-- este disponible y solo si de verdad hara mas daño"
 -- =========================================================================
 
 -- Macro rápido de auto-target (50ms)
@@ -655,7 +760,7 @@ macro(50, function()
   end
 end)
 
--- Macro de decisión matemática de daño y ataque (20ms)
+-- Macro principal de ataque y decisión de máximo daño (20ms)
 macro(20, function()
   if not config.enabled then return end
   if isInPz() then return end
@@ -700,77 +805,119 @@ macro(20, function()
     g_game.attack(currentTarget)
   end
 
-  -- 1. Calcular Daño Esperado de Runa de Area (Thunderlord / Thunderstorm)
+  -- =======================================================================
+  -- 1. BASELINE: CALCULAR DAÑO TOTAL DE LA RUNA DE ÁREA
+  -- =======================================================================
   local baseRuneDmg = getBaseDamage("rune")
   local bestRunePos, bestRuneCreature, runeHits = getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, allSpecs)
   runeHits = math.max(0, runeHits or 0)
   local totalRuneDmg = runeHits * baseRuneDmg
 
-  -- 2. Calcular Daño Esperado de Exevo Ulus Tera
-  local ulusReady, remainingCd = isUlusReady()
+  -- =======================================================================
+  -- 2. EVALUAR SPELLS DISPONIBLES (OFF COOLDOWN) Y SUS DAÑOS TOTALES
+  -- =======================================================================
+
+  -- 2a. Exevo Ulus Tera (Donut: Vacio en los 8 SQMs pegados al jugador)
+  local ulusReady, ulusCdRemain = isSpellReady("ulus", config.ulusCooldown or 4000)
   local baseUlusDmg = getBaseDamage("ulus")
-  local bestWaveDir = player:getDirection()
-  local waveHits = 0
-  local areaHits = 0
-  local bestUlusHits = 0
-  local useWaveMode = (config.ulusShape == 1)
+  local ulusHits = 0
+  local totalUlusDmg = 0
 
   if ulusReady then
-    if config.ulusShape == 1 then -- Onda Frontal (Wave)
-      bestWaveDir, waveHits = evaluateWaveDirection(playerPos, aliveMonsters, allSpecs)
-      bestUlusHits = waveHits
-    elseif config.ulusShape == 2 then -- Area 360
-      areaHits = evaluateArea360(playerPos, aliveMonsters, allSpecs)
-      bestUlusHits = areaHits
-      useWaveMode = false
-    else -- Auto (compara wave vs area)
-      bestWaveDir, waveHits = evaluateWaveDirection(playerPos, aliveMonsters, allSpecs)
-      areaHits = evaluateArea360(playerPos, aliveMonsters, allSpecs)
-      if waveHits >= areaHits then
-        bestUlusHits = waveHits
-        useWaveMode = true
-      else
-        bestUlusHits = areaHits
-        useWaveMode = false
-      end
-    end
+    ulusHits = evaluateUlusDonut(playerPos, aliveMonsters, allSpecs)
+    totalUlusDmg = ulusHits * baseUlusDmg
   end
 
-  local totalUlusDmg = (ulusReady and bestUlusHits > 0) and (bestUlusHits * baseUlusDmg) or 0
+  -- 2b. Exevo Gran Frigo Hur (Strong Ice Wave)
+  local frigoReady, frigoCdRemain = isSpellReady("frigo", config.frigoCooldown or 8000)
+  local baseFrigoDmg = getBaseDamage("frigo")
+  local frigoHits = 0
+  local bestFrigoDir = player:getDirection()
+  local totalFrigoDmg = 0
 
-  -- 3. Acomodar paso de 1 SQM (Reposition) si se gana ventaja significativa
-  if config.autoStep and ulusReady and bestUlusHits <= 1 and (lastStepReposition + 1000 < currentNow) and not player:isWalking() then
-    local stepOffsets = { {x=0, y=-1}, {x=1, y=0}, {x=0, y=1}, {x=-1, y=0} }
-    for _, off in ipairs(stepOffsets) do
-      local testPos = { x = playerPos.x + off.x, y = playerPos.y + off.y, z = pz }
-      local tile = g_map.getTile(testPos)
-      if tile and tile:isWalkable() and not tile:hasCreature() then
-        local _, tHits = evaluateWaveDirection(testPos, aliveMonsters, allSpecs)
-        if tHits >= bestUlusHits + 2 then
-          autoWalk(testPos, 1, { ignoreCreatures = false })
-          lastStepReposition = currentNow
-          return
-        end
-      end
-    end
+  if config.useFrigoHur and frigoReady then
+    bestFrigoDir, frigoHits = evaluateGranFrigoHur(playerPos, aliveMonsters, allSpecs)
+    totalFrigoDmg = frigoHits * baseFrigoDmg
   end
 
-  -- 4. COMPARACIÓN MATEMÁTICA Y EJECUCIÓN (Máximo DPS)
-  -- Si Ulus está disponible y su daño total supera o iguala a la runa grupal:
-  if ulusReady and bestUlusHits >= 1 and totalUlusDmg >= totalRuneDmg then
-    -- ACOMODAR: Girar el personaje hacia la mejor direccion antes de tirar la onda
-    if useWaveMode and config.autoTurn then
-      if player:getDirection() ~= bestWaveDir then
-        turn(bestWaveDir)
+  -- 2c. Exevo Tera Hur (Terra Wave)
+  local teraReady, teraCdRemain = isSpellReady("tera", config.teraCooldown or 4000)
+  local baseTeraDmg = getBaseDamage("tera")
+  local teraHits = 0
+  local bestTeraDir = player:getDirection()
+  local totalTeraDmg = 0
+
+  if config.useTeraHur and teraReady then
+    bestTeraDir, teraHits = evaluateTeraHur(playerPos, aliveMonsters, allSpecs)
+    totalTeraDmg = teraHits * baseTeraDmg
+  end
+
+  -- =======================================================================
+  -- 3. COMPARAR QUÉ SPELL HACE EL MÁXIMO DAÑO ENTRE LAS DISPONIBLES
+  -- =======================================================================
+  local bestSpellKey = nil
+  local maxSpellDmg = 0
+  local bestSpellHits = 0
+  local bestSpellDir = player:getDirection()
+  local bestSpellWords = ""
+
+  -- Candidato 1: Ulus
+  if ulusReady and ulusHits >= 1 and totalUlusDmg > maxSpellDmg then
+    maxSpellDmg = totalUlusDmg
+    bestSpellKey = "ulus"
+    bestSpellHits = ulusHits
+    bestSpellWords = config.ulusSpell
+  end
+
+  -- Candidato 2: Gran Frigo Hur
+  if config.useFrigoHur and frigoReady and frigoHits >= 1 and totalFrigoDmg > maxSpellDmg then
+    maxSpellDmg = totalFrigoDmg
+    bestSpellKey = "frigo"
+    bestSpellHits = frigoHits
+    bestSpellDir = bestFrigoDir
+    bestSpellWords = config.frigoSpell
+  end
+
+  -- Candidato 3: Tera Hur
+  if config.useTeraHur and teraReady and teraHits >= 1 and totalTeraDmg > maxSpellDmg then
+    maxSpellDmg = totalTeraDmg
+    bestSpellKey = "tera"
+    bestSpellHits = teraHits
+    bestSpellDir = bestTeraDir
+    bestSpellWords = config.teraSpell
+  end
+
+  -- =======================================================================
+  -- 4. LA DECISIÓN DE ORO:
+  -- "siempre tira la runa hasta que alguna spell que haga mas daño este
+  -- disponible y solo si de verdad hara mas daño"
+  -- =======================================================================
+
+  if bestSpellKey and maxSpellDmg > totalRuneDmg and maxSpellDmg > 0 and bestSpellHits >= 1 then
+    -- Si es una ola frontal (Frigo Hur o Tera Hur), acomodar direccion si autoTurn esta activo
+    if (bestSpellKey == "frigo" or bestSpellKey == "tera") and config.autoTurn then
+      if player:getDirection() ~= bestSpellDir then
+        turn(bestSpellDir)
       end
     end
 
-    say(config.ulusSpell)
-    lastUlusCast = currentNow
+    -- Ejecutar la spell ganadora
+    say(bestSpellWords)
+
+    if bestSpellKey == "ulus" then
+      lastUlusCast = currentNow
+    elseif bestSpellKey == "frigo" then
+      lastFrigoCast = currentNow
+    elseif bestSpellKey == "tera" then
+      lastTeraCast = currentNow
+    end
     lastAttack = currentNow
 
-    local statusMsg = string.format("[DPS: ULUS] %dm (~%d dmg) >= Thunder %dm (~%d) | Dir: %s",
-      bestUlusHits, totalUlusDmg, runeHits, totalRuneDmg, dirNames[bestWaveDir] or "?")
+    local statusMsg = string.format("[DPS: %s] %dm (~%d dmg) > Rune %dm (~%d)",
+      bestSpellKey:upper(), bestSpellHits, maxSpellDmg, runeHits, totalRuneDmg)
+    if bestSpellKey == "frigo" or bestSpellKey == "tera" then
+      statusMsg = statusMsg .. string.format(" | Dir: %s", dirNames[bestSpellDir] or "?")
+    end
     updateStatus(statusMsg)
 
     if logCaveBot then
@@ -779,8 +926,9 @@ macro(20, function()
     return
   end
 
-  -- Si la Runa de Area (Thunderlord / Thunderstorm) hace mas daño O si Ulus esta en cooldown:
-  if runeHits >= 2 and totalRuneDmg > 0 and bestRunePos then
+  -- SI NINGUNA SPELL SUPERA A LA RUNA (O ESTAN EN COOLDOWN O NO PEGAN MEJOR):
+  -- Disparar la Runa de Área al mejor punto!
+  if runeHits >= 1 and bestRunePos and totalRuneDmg > 0 then
     local targetThing = bestRuneCreature
     if not targetThing then
       local tile = g_map.getTile(bestRunePos)
@@ -794,9 +942,8 @@ macro(20, function()
       lastRuneCast = currentNow
       lastAttack = currentNow
 
-      local cdText = ulusReady and "" or string.format(" [Ulus CD: %.1fs]", remainingCd or 0)
-      local statusMsg = string.format("[DPS: THUNDER] %dm (~%d dmg) > Ulus %dm (~%d)%s",
-        runeHits, totalRuneDmg, bestUlusHits, totalUlusDmg, cdText)
+      local statusMsg = string.format("[DPS: RUNE] %dm (~%d dmg) | Best Spell: %s (~%d)",
+        runeHits, totalRuneDmg, bestSpellKey and bestSpellKey:upper() or "NONE", maxSpellDmg)
       updateStatus(statusMsg)
 
       if logCaveBot and runeHits >= 3 then
@@ -806,7 +953,9 @@ macro(20, function()
     end
   end
 
-  -- Caso Remate / Single Target (1 solo monstruo o sin agrupacion favorable para area)
+  -- =======================================================================
+  -- 5. FALLBACK: SINGLE TARGET (1 monstruo aislado o remate)
+  -- =======================================================================
   local singleTarget = currentTarget or aliveMonsters[1]
   if singleTarget and isTargetableCreature(singleTarget) then
     local tPos = singleTarget:getPosition()

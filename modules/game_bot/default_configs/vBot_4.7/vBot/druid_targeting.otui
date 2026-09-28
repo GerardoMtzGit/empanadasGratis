@@ -1,13 +1,13 @@
 DruidTargetingWindow < MainWindow
   !text: tr('Configuracion: Targeting de Druid (High DPS)')
-  size: 380 500
+  size: 380 540
   @onEscape: self:hide()
 
   Label
     id: ulusTitle
     anchors.top: parent.top
     anchors.left: parent.left
-    text: Spell Principal (Ulus):
+    text: Spell Ulus (Donut AoE - Vacio en 8 SQMs):
     font: cipsoftFont
     color: #55ff55
 
@@ -26,9 +26,9 @@ DruidTargetingWindow < MainWindow
     anchors.right: parent.right
     width: 80
     height: 20
-    margin-top: 3
+    margin-top: 2
     font: cipsoftFont
-    tooltip: Cooldown en milisegundos (ej: 4000)
+    tooltip: Cooldown en ms (ej: 4000)
 
   TextEdit
     id: ulusSpell
@@ -36,40 +36,108 @@ DruidTargetingWindow < MainWindow
     anchors.left: parent.left
     anchors.right: ulusCooldown.left
     margin-right: 6
-    margin-top: 3
+    margin-top: 2
     height: 20
     font: cipsoftFont
 
-  Label
-    id: ulusModeLabel
+  HorizontalSeparator
+    id: sepWaves
     anchors.top: ulusSpell.bottom
     anchors.left: parent.left
-    margin-top: 6
-    text: Forma / Modo de la Spell:
-    font: cipsoftFont
-    color: #ffaa00
-
-  ComboBox
-    id: ulusShapeCombo
-    anchors.top: prev.bottom
-    anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 3
+    margin-top: 6
+
+  CheckBox
+    id: useFrigoHur
+    anchors.top: sepWaves.bottom
+    anchors.left: parent.left
+    margin-top: 5
+    text: Usar Exevo Gran Frigo Hur (Ice Wave)
+    font: cipsoftFont
+    color: #66ccff
+
+  Label
+    id: frigoCdTitle
+    anchors.top: sepWaves.bottom
+    anchors.right: parent.right
+    margin-top: 5
+    width: 80
+    text: Cooldown (ms):
+    font: cipsoftFont
+    color: #a0a0a0
+
+  TextEdit
+    id: frigoCooldown
+    anchors.top: frigoCdTitle.bottom
+    anchors.right: parent.right
+    width: 80
     height: 20
+    margin-top: 2
+    font: cipsoftFont
+    tooltip: Cooldown en ms (ej: 8000)
+
+  TextEdit
+    id: frigoSpell
+    anchors.top: useFrigoHur.bottom
+    anchors.left: parent.left
+    anchors.right: frigoCooldown.left
+    margin-right: 6
+    margin-top: 2
+    height: 20
+    font: cipsoftFont
+
+  CheckBox
+    id: useTeraHur
+    anchors.top: frigoSpell.bottom
+    anchors.left: parent.left
+    margin-top: 6
+    text: Usar Exevo Tera Hur (Terra Wave)
+    font: cipsoftFont
+    color: #88ff88
+
+  Label
+    id: teraCdTitle
+    anchors.top: frigoSpell.bottom
+    anchors.right: parent.right
+    margin-top: 6
+    width: 80
+    text: Cooldown (ms):
+    font: cipsoftFont
+    color: #a0a0a0
+
+  TextEdit
+    id: teraCooldown
+    anchors.top: teraCdTitle.bottom
+    anchors.right: parent.right
+    width: 80
+    height: 20
+    margin-top: 2
+    font: cipsoftFont
+    tooltip: Cooldown en ms (ej: 4000)
+
+  TextEdit
+    id: teraSpell
+    anchors.top: useTeraHur.bottom
+    anchors.left: parent.left
+    anchors.right: teraCooldown.left
+    margin-right: 6
+    margin-top: 2
+    height: 20
+    font: cipsoftFont
 
   HorizontalSeparator
     id: sep1
-    anchors.top: prev.bottom
+    anchors.top: teraSpell.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 8
+    margin-top: 6
 
   Label
     id: areaRuneLabel
     anchors.top: sep1.bottom
     anchors.left: parent.left
     margin-top: 4
-    text: Runa de Area (Thunderlord / Thunderstorm):
+    text: Runa de Area Base (Thunderlord / Thunderstorm):
     font: cipsoftFont
     color: #ffff55
 
@@ -78,24 +146,24 @@ DruidTargetingWindow < MainWindow
     anchors.top: prev.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 3
+    margin-top: 2
     height: 20
 
   Label
     id: singleLabel
     anchors.top: prev.bottom
     anchors.left: parent.left
-    margin-top: 6
+    margin-top: 5
     text: Spell Single Target (Strike / Remate):
     font: cipsoftFont
-    color: #66ccff
+    color: #ff99cc
 
   TextEdit
     id: singleSpell
     anchors.top: prev.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 3
+    margin-top: 2
     height: 20
     font: cipsoftFont
 
@@ -104,23 +172,15 @@ DruidTargetingWindow < MainWindow
     anchors.top: prev.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 8
-
-  Label
-    id: mathLabel
-    anchors.top: sep2.bottom
-    anchors.left: parent.left
-    text: Formula Matematica de Decision:
-    font: cipsoftFont
-    color: #ff77ff
+    margin-top: 6
 
   Label
     id: ratioLabel
-    anchors.top: prev.bottom
+    anchors.top: sep2.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 4
-    text: Potencia Ulus vs Runa (Ratio x): 2.2x
+    margin-top: 3
+    text: Multiplicador Dano Ulus vs Runa: 2.3x
     font: cipsoftFont
 
   HorizontalScrollBar
@@ -128,7 +188,7 @@ DruidTargetingWindow < MainWindow
     anchors.top: prev.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 3
+    margin-top: 2
     minimum: 10
     maximum: 50
     step: 1
@@ -138,7 +198,7 @@ DruidTargetingWindow < MainWindow
     anchors.top: prev.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 6
+    margin-top: 4
     text: Delay entre ataques: 201 ms
     font: cipsoftFont
 
@@ -147,7 +207,7 @@ DruidTargetingWindow < MainWindow
     anchors.top: prev.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 3
+    margin-top: 2
     minimum: 50
     maximum: 1000
     step: 1
@@ -157,17 +217,8 @@ DruidTargetingWindow < MainWindow
     anchors.top: prev.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 8
-    text: Auto-Acomodar (Girar al lado que mas dano haga)
-    font: cipsoftFont
-
-  CheckBox
-    id: autoStep
-    anchors.top: prev.bottom
-    anchors.left: parent.left
-    anchors.right: parent.right
-    margin-top: 5
-    text: Acomodar paso (1 SQM si aumenta >= 2 monstruos)
+    margin-top: 6
+    text: Auto-Girar hacia donde haga mayor dano
     font: cipsoftFont
 
   CheckBox
@@ -175,8 +226,8 @@ DruidTargetingWindow < MainWindow
     anchors.top: prev.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 5
-    text: PVP Seguro (No danar jugadores inocentes)
+    margin-top: 4
+    text: PVP Seguro (No danar jugadores inocentes/aliados)
     font: cipsoftFont
 
   CheckBox
@@ -184,8 +235,8 @@ DruidTargetingWindow < MainWindow
     anchors.top: prev.bottom
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-top: 5
-    text: Priorizar Mana (>20% MP para seguridad)
+    margin-top: 4
+    text: Priorizar Mana (>20% MP para curacion)
     font: cipsoftFont
 
   HorizontalSeparator
@@ -193,7 +244,7 @@ DruidTargetingWindow < MainWindow
     anchors.bottom: closeButton.top
     anchors.left: parent.left
     anchors.right: parent.right
-    margin-bottom: 8
+    margin-bottom: 6
 
   Button
     id: closeButton
