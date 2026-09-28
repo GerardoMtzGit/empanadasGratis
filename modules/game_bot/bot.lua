@@ -372,6 +372,19 @@ end
 function online()
   applyWalkingProtections()
   botButton:show()
+
+  -- Asegurar que al iniciar o conectar el OTClient, el bot SIEMPRE inicie en OFF
+  local settings = g_settings.getNode('bot') or {}
+  local charName = g_game.getCharacterName()
+  if charName then
+    local index = charName .. "_" .. g_game.getClientVersion()
+    if settings[index] then
+      settings[index].enabled = false
+      g_settings.setNode('bot', settings)
+      g_settings.save()
+    end
+  end
+
   if not modules.client_profiles.ChangedProfile then
     scheduleEvent(refresh, 20)
   end

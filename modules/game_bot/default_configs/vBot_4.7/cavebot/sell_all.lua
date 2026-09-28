@@ -120,10 +120,6 @@ CaveBot.Extensions.SellAll.setup = function()
             npc = c
             npcName = c:getName()
             break
-          elseif getDistanceBetween(pos, c:getPosition()) <= 4 then
-            npc = c
-            npcName = c:getName()
-            break
           end
         end
       end

@@ -127,18 +127,23 @@ local function updateVisuals()
     manaIconWidget.item:setItemId(previewId or 23373)
     manaIconWidget:setOn(isDrinking)
 
+    local lbl = manaIconWidget.percent or manaIconWidget.text
     if isDrinking then
       manaIconWidget:setBorderColor("#00ffff")
       manaIconWidget:setBackgroundColor("#1e3a8aee")
-      manaIconWidget.status:setBackgroundColor("#00ffff")
-      manaIconWidget.text:setColor("#00ffff")
-      manaIconWidget.text:setText(curMp .. "%")
+      if manaIconWidget.status then manaIconWidget.status:setBackgroundColor("#00ffff") end
+      if lbl then
+        lbl:setColor("#00ffff")
+        lbl:setText(curMp .. "%")
+      end
     else
       manaIconWidget:setBorderColor("#3b82f6")
       manaIconWidget:setBackgroundColor("#0b1526ee")
-      manaIconWidget.status:setBackgroundColor("#3b82f6")
-      manaIconWidget.text:setColor("#93c5fd")
-      manaIconWidget.text:setText(target .. "%")
+      if manaIconWidget.status then manaIconWidget.status:setBackgroundColor("#3b82f6") end
+      if lbl then
+        lbl:setColor("#93c5fd")
+        lbl:setText(target .. "%")
+      end
     end
 
     manaIconWidget:setTooltip("Icono de Mana (ID " .. (config.itemId or 438) .. ")\n" ..
@@ -174,11 +179,15 @@ local function triggerManaHeal(forceState)
     isDrinking = false
     emptyAttempts = 0
     updateVisuals()
-    if manaIconWidget and manaIconWidget.text then
-      manaIconWidget.text:setText("FULL")
+    local lbl = manaIconWidget and (manaIconWidget.percent or manaIconWidget.text)
+    if lbl then
+      lbl:setText("FULL")
       schedule(800, function()
-        if not isDrinking and manaIconWidget and manaIconWidget.text then
-          manaIconWidget.text:setText(target .. "%")
+        if not isDrinking and manaIconWidget then
+          local curLbl = manaIconWidget.percent or manaIconWidget.text
+          if curLbl then
+            curLbl:setText(target .. "%")
+          end
         end
       end)
     end
