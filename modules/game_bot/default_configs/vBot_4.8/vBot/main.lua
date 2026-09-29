@@ -21,6 +21,14 @@ if os.time() > storage.checkVersion + (12 * 60 * 60) then
 
 end
 
+-- Tuning de recursos y memoria para evitar congelamientos (0 lag spikes)
+pcall(function()
+  if collectgarbage then
+    collectgarbage("setpause", 100)    -- Iniciar ciclo GC de inmediato sin acumular basura
+    collectgarbage("setstepmul", 400)  -- Recolectar 4x mas rapido para evitar pausas largas
+  end
+end)
+
 UI.Label("vBot v".. version .." \n Vithrax#5814")
 UI.Button("Official OTCv8 Discord!", function() g_platform.openUrl("https://discord.gg/yhqBE4A") end)
 UI.Separator()

@@ -928,11 +928,12 @@ local targetIconWidget = nil
 local lastKnownTargetState = nil
 
 local function isTargetsActive()
+  local dtOn = (storage["druid_targeting"] and storage["druid_targeting"].enabled) or false
   local tbOn = (TargetBot and TargetBot.isOn and TargetBot.isOn()) or false
   local trOn = (storage["tirar_runa"] and storage["tirar_runa"].enabled) or false
   local abOn = (storage.AttackBot and storage.AttackBot.enabled) or false
   local sdOn = (storage["sd_only"] and storage["sd_only"].enabled) or false
-  return (tbOn or trOn or abOn or sdOn)
+  return (dtOn or tbOn or trOn or abOn or sdOn)
 end
 
 local function updateTargetIconVisuals()
@@ -967,6 +968,9 @@ local function toggleTargets()
   local isCurrentlyOn = isTargetsActive()
   if isCurrentlyOn then
     -- APAGAR TODOS LOS TARGETS
+    if storage["druid_targeting"] then
+      storage["druid_targeting"].enabled = false
+    end
     if TargetBot and TargetBot.setOff then
       TargetBot.setOff()
     end
@@ -982,6 +986,9 @@ local function toggleTargets()
     g_game.cancelAttackAndFollow()
   else
     -- PRENDER TARGETS
+    if storage["druid_targeting"] then
+      storage["druid_targeting"].enabled = true
+    end
     if TargetBot and TargetBot.setOn then
       TargetBot.setOn()
     end

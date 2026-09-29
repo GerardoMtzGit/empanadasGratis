@@ -948,10 +948,6 @@ macro(100, function()
       statusMsg = statusMsg .. string.format(" | Dir: %s", dirNames[bestSpellDir] or "?")
     end
     updateStatus(statusMsg)
-
-    if logCaveBot then
-      logCaveBot("DRUID TARGETING", statusMsg)
-    end
     return
   end
 
@@ -974,10 +970,6 @@ macro(100, function()
       local statusMsg = string.format("[DPS: RUNE] %dm (~%d dmg) | Best Spell: %s (~%d)",
         runeHits, totalRuneDmg, bestSpellKey and bestSpellKey:upper() or "NONE", maxSpellDmg)
       updateStatus(statusMsg)
-
-      if logCaveBot and runeHits >= 3 then
-        logCaveBot("DRUID TARGETING", statusMsg)
-      end
       return
     end
   end

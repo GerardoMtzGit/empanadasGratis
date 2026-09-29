@@ -262,12 +262,9 @@ function refresh()
       enabled=false,
       config=""
     }
-  else
-    -- Asegurar que el bot siempre inicie en OFF
-    settings[index].enabled = false
-  end
-  g_settings.setNode('bot', settings)
-  g_settings.save()  
+    g_settings.setNode('bot', settings)
+    g_settings.save()
+  end  
   
   -- init list and buttons
   for i=1,#configs do 

@@ -109,9 +109,6 @@ function botLogger.write(category, message, details)
   local function flushDiskLogs()
     botLogger.isFlushScheduled = false
     if #botLogger.pendingDiskLines == 0 then return end
-    
-    -- Rotar si superan 100MB antes de escribir
-    botLogger.checkAndRotateLogs()
 
     local text = table.concat(botLogger.pendingDiskLines, "\n") .. "\n"
     botLogger.pendingDiskLines = {}
@@ -128,15 +125,13 @@ function botLogger.write(category, message, details)
     end
   end
 
-  local isUrgent = line:find("ERROR") or line:find("EXCEPCI") or line:find("SELL:START") or line:find("SELL:COMPLETE") or line:find("CAVEBOT") or line:find("Venta detectada")
-  if isUrgent or #botLogger.pendingDiskLines >= 10 then
+  local isUrgent = line:find("ERROR") or line:find("EXCEPCI")
+  if isUrgent or #botLogger.pendingDiskLines >= 25 then
     flushDiskLogs()
   elseif not botLogger.isFlushScheduled then
     botLogger.isFlushScheduled = true
     if schedule then
-      schedule(1000, flushDiskLogs)
-    else
-      flushDiskLogs()
+      schedule(3000, flushDiskLogs)
     end
   end
 
