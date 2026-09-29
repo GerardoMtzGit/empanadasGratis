@@ -72,6 +72,11 @@ pcall(function()
 end)
 
 function botLogger.write(category, message, details)
+  -- SOLO capturar logs si el usuario activo el boton en la pestaña de Tools
+  if not storage or not storage.bot_logger or not storage.bot_logger.enabled then
+    return
+  end
+
   local ts = botLogger.formatTime()
   local cat = tostring(category or "BOT"):upper()
   local msg = tostring(message or "")
@@ -178,11 +183,18 @@ if macro then
   end)
 end
 
+function isBotLoggerEnabled()
+  return storage and storage.bot_logger and storage.bot_logger.enabled == true
+end
+
 -- Funcion global de log para cavebot
 function logCaveBot(action, msg, details)
+  if not isBotLoggerEnabled() then return end
   if botLogger and botLogger.write then
     botLogger.write("CAVEBOT:" .. tostring(action):upper(), msg, details)
   end
 end
 
-botLogger.write("SYSTEM", "Iniciando sistema de logs del bot HegalOT (v1.1) con limite maximo de 100MB")
+if isBotLoggerEnabled() then
+  botLogger.write("SYSTEM", "Iniciando sistema de logs del bot HegalOT (v1.1) con limite maximo de 100MB")
+end

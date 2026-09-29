@@ -186,6 +186,13 @@ TargetBot.Creature.walk = function(creature, config, targets)
     end
   end
 
+  -- Si el personaje esta trapeado/bloqueado, NO intentar caminar ni calcular rutas (0 lag/CPU)
+  if isTrapped then
+    anchorPosition = nil
+    TargetBot.walkTo(nil)
+    return
+  end
+
   -- data for dynamic lure
   local isDynamic = config.dynamicLure or config.dynamicLureDelay
   local lMin = config.delayFrom or config.lureMin or 2

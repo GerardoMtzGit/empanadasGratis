@@ -608,6 +608,47 @@ end
 -- Optimizar el disparo de la Runa de Área al cluster con mas monstruos (rapido y seguro)
 local function getBestRuneBlastTarget(playerPos, aliveMonsters, currentTarget, innocentPlayers)
   local pz = playerPos.z
+
+  -- OPTIMIZACION CRITICA: Cuando el jugador esta trapeado/boxeado (>= 3 monstruos cuerpo a cuerpo)
+  -- Disparar la runa de area en el propio jugador golpea a todos los monstruos adyacentes (360°)
+  -- y evita el costo de generar pares y evaluar decenas de combinaciones.
+  local adjacentCount = 0
+  for _, m in ipairs(aliveMonsters) do
+    if getDistanceBetween(playerPos, m.pos) <= 1 then
+      adjacentCount = adjacentCount + 1
+    end
+  end
+
+  if adjacentCount >= 3 then
+    local pvpBlocked = false
+    if config.safePvp then
+      for _, inno in ipairs(innocentPlayers) do
+        if isBlastHit(playerPos.x, playerPos.y, inno.pos.x, inno.pos.y) then
+          pvpBlocked = true
+          break
+        end
+      end
+    end
+
+    if not pvpBlocked then
+      local hits = 0
+      for _, m in ipairs(aliveMonsters) do
+        if isBlastHit(playerPos.x, playerPos.y, m.pos.x, m.pos.y) then
+          hits = hits + 1
+        end
+      end
+
+      local bestCreature = nil
+      if currentTarget then
+        local tp = currentTarget.getPosition and currentTarget:getPosition()
+        if tp and tp.z == pz and getDistanceBetween(playerPos, tp) <= 1 then
+          bestCreature = currentTarget
+        end
+      end
+      return playerPos, bestCreature, hits
+    end
+  end
+
   local candidatePositions = {}
   local visited = {}
 
@@ -732,52 +773,6 @@ local dirNames = { [0] = "North", [1] = "East", [2] = "South", [3] = "West" }
 -- este disponible y solo si de verdad hara mas daño"
 -- =========================================================================
 
--- Macro de auto-target (150ms: sin saturar la red ni el hilo principal)
-macro(150, function()
-  if not config.enabled then return end
-  if not g_game.isOnline() or not player or isInPz() then return end
-  if not config.autoTarget then return end
-
-  local currentNow = getNow()
-  if lastAutoTargetTime + 300 > currentNow then return end
-
-  local pPos = pos()
-  if not pPos then return end
-  local pz = pPos.z
-  local currentTarget = g_game.getAttackingCreature()
-
-  if currentTarget then
-    local tPos = currentTarget.getPosition and currentTarget:getPosition()
-    if not tPos or tPos.z ~= pz or currentTarget:getHealthPercent() <= 0 or not isTargetableCreature(currentTarget) then
-      if not isTargetableCreature(currentTarget) then
-        g_game.cancelAttackAndFollow()
-      end
-      currentTarget = nil
-    end
-  end
-
-  if not currentTarget then
-    local closestDist = 999
-    local closestCreature = nil
-    for _, spec in ipairs(getSpectators()) do
-      if isTargetableCreature(spec) then
-        local sp = spec.getPosition and spec:getPosition()
-        if sp and sp.z == pz then
-          local dist = getDistanceBetween(pPos, sp)
-          if dist < closestDist and dist <= 7 then
-            closestDist = dist
-            closestCreature = spec
-          end
-        end
-      end
-    end
-    if closestCreature then
-      g_game.attack(closestCreature)
-      lastAutoTargetTime = currentNow
-    end
-  end
-end)
-
 -- Macro principal de ataque y decisión de máximo daño (100ms)
 macro(100, function()
   if not config.enabled then return end
@@ -834,7 +829,7 @@ macro(100, function()
     g_game.cancelAttackAndFollow()
     currentTarget = nil
   end
-  if not currentTarget and #aliveMonsters > 0 then
+  if config.autoTarget and not currentTarget and #aliveMonsters > 0 then
     currentTarget = aliveMonsters[1].creature
     g_game.attack(currentTarget)
   end

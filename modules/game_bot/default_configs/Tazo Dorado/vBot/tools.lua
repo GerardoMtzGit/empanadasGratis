@@ -175,3 +175,21 @@ onRemoveThing(function(tile, thing)
 end)
 
 UI.Separator()
+UI.Label("Registros y Diagnostico:")
+
+if not storage.bot_logger then
+  storage.bot_logger = { enabled = false }
+end
+
+local logSwitch = addSwitch("botLoggerEnabled", "Activar Logs del Bot", function(widget)
+  widget:setOn(not widget:isOn())
+  storage.bot_logger.enabled = widget:isOn()
+  if widget:isOn() then
+    info("Logs del Bot ACTIVADOS. Se registraran acciones en bot_actions.log")
+  else
+    info("Logs del Bot DESACTIVADOS. Maximo rendimiento y 0 consumo de CPU.")
+  end
+end)
+if logSwitch then
+  logSwitch:setOn(storage.bot_logger and storage.bot_logger.enabled == true)
+end

@@ -63,7 +63,13 @@ targetbotMacro = macro(100, function()
   for i, creature in ipairs(creatures) do
     local hppc = creature:getHealthPercent()
     if hppc and hppc > 0 and not (isIgnoredSummonOrFamiliar and isIgnoredSummonOrFamiliar(creature)) then
-      local path = findPath(player:getPosition(), creature:getPosition(), 7, {ignoreLastCreature=true, ignoreNonPathable=true, ignoreCost=true, ignoreCreatures=true})
+      local cDist = getDistanceBetween(pos, creature:getPosition())
+      local path = nil
+      if cDist <= 1 then
+        path = { 1 } -- Adyacente: camino garantizado de 1 paso sin costo de busqueda A*
+      else
+        path = findPath(pos, creature:getPosition(), 7, {ignoreLastCreature=true, ignoreNonPathable=true, ignoreCost=true, ignoreCreatures=true})
+      end
       if (creature:isMonster() or (not creature:isPlayer() and not creature:isNpc())) and (oldTibia or creature:getType() < 3) and path then
         local params = TargetBot.Creature.calculateParams(creature, path) -- return {craeture, config, danger, priority}
         dangerLevel = dangerLevel + params.danger

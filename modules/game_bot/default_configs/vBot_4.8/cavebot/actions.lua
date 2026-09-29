@@ -81,23 +81,23 @@ end)
 local furnitureIgnore = { 2986 }
 local function breakFurniture(destPos)
   if isInPz() then return false end
+  local pPos = player and player:getPosition()
+  if not pPos then return false end
+
+  local nearTiles = getNearTiles(pPos)
   local candidate = {thing=nil, dist=100}
-  for i, tile in ipairs(g_map.getTiles(posz())) do
-    local walkable = tile:isWalkable()
+
+  for _, tile in ipairs(nearTiles) do
     local topThing = tile:getTopThing()
     local isWg = topThing and topThing:getId() == 2130
     if topThing and (isWg or not table.find(furnitureIgnore, topThing:getId()) and topThing:isItem()) then
+      local walkable = tile:isWalkable()
       local moveable = not topThing:isNotMoveable()
-      local tpos = tile:getPosition()
-      local path = findPath(player:getPosition(), tpos, 7, { ignoreNonPathable = true, precision = 1 })
-
-      if path then
-        if isWg or (not walkable and moveable) then
-          local distance = getDistanceBetween(destPos, tpos)
-
-          if distance < candidate.dist then
-            candidate = {thing=topThing, dist=distance}
-          end
+      if isWg or (not walkable and moveable) then
+        local tpos = tile:getPosition()
+        local distance = getDistanceBetween(destPos, tpos)
+        if distance < candidate.dist then
+          candidate = {thing=topThing, dist=distance}
         end
       end
     end
@@ -347,6 +347,7 @@ CaveBot.registerAction("goto", "green", function(value, retries, prev)
     end
     noPath = noPath + 1
     pathfinder()
+    CaveBot.delay(600)
     return false -- there's no way
   end
 
@@ -367,16 +368,27 @@ CaveBot.registerAction("goto", "green", function(value, retries, prev)
               local hppc = creature:getHealthPercent()
               if creature:isMonster() and (hppc and hppc > 0) and (oldTibia or creature:getType() < 3) then
                   -- real blocking creature can not meet those conditions - ie. it could be player, so just in case check if the next creature is reachable
-                  local path = findPath(playerPos, creature:getPosition(), 7, { ignoreNonPathable = true, precision = 1 }) 
-                  if path then
+                  local cDist = getDistanceBetween(playerPos, creature:getPosition())
+                  if cDist <= 1 then
                       foundMonster = true
                       if g_game.getAttackingCreature() ~= creature then
                         attack(creature)
                       end
-                      g_game.setChaseMode(1)
-                      CaveBot.delay(100)
-                      retries = 0 -- reset retries, we are trying to unclog the cavebot
+                      CaveBot.delay(500)
+                      retries = 0
                       break
+                  else
+                      local path = findPath(playerPos, creature:getPosition(), 7, { ignoreNonPathable = true, precision = 1 }) 
+                      if path then
+                          foundMonster = true
+                          if g_game.getAttackingCreature() ~= creature then
+                            attack(creature)
+                          end
+                          g_game.setChaseMode(1)
+                          CaveBot.delay(500)
+                          retries = 0 -- reset retries, we are trying to unclog the cavebot
+                          break
+                      end
                   end
               end
           end
@@ -385,6 +397,7 @@ CaveBot.registerAction("goto", "green", function(value, retries, prev)
 
     if not foundMonster then
       foundMonster = false
+      CaveBot.delay(600)
       return false -- no other way
     end
   end
@@ -413,11 +426,15 @@ CaveBot.registerAction("goto", "green", function(value, retries, prev)
   if CaveBot.Config.get("skipBlocked") then
     noPath = noPath + 1
     pathfinder()
+    CaveBot.delay(600)
     return false
   end
 
   -- everything else failed, try to walk ignoring creatures, maybe will work
-  CaveBot.walkTo(pos, maxDist, { ignoreNonPathable = true, precision = 1, ignoreCreatures = true, allowUnseen = true, allowOnlyVisibleTiles = false })
+  if not CaveBot.walkTo(pos, maxDist, { ignoreNonPathable = true, precision = 1, ignoreCreatures = true, allowUnseen = true, allowOnlyVisibleTiles = false }) then
+    CaveBot.delay(600)
+    return false
+  end
   return "retry"
 end)
 

@@ -48,7 +48,7 @@ cavebotMacro = macro(20, function()
     local retry = false
     local isSuccess = false
     if action then
-      if actionRetries == 0 and logCaveBot then
+      if actionRetries == 0 and isBotLoggerEnabled and isBotLoggerEnabled() and logCaveBot then
         local pPos = player and player:getPosition()
         local posTxt = pPos and string.format("(%d,%d,%d)", pPos.x, pPos.y, pPos.z) or "desconocida"
         logCaveBot(currentAction.action, string.format("Iniciando acción '%s' (valor: '%s') | Pos: %s", tostring(currentAction.action), tostring(value), posTxt))
@@ -61,11 +61,11 @@ cavebotMacro = macro(20, function()
         if result == "retry" then
           actionRetries = actionRetries + 1
           retry = true
-          if actionRetries % 10 == 0 and logCaveBot then
+          if actionRetries % 10 == 0 and isBotLoggerEnabled and isBotLoggerEnabled() and logCaveBot then
             logCaveBot(currentAction.action, string.format("Acción '%s' reintentando... (intento #%d)", tostring(currentAction.action), actionRetries))
           end
         elseif type(result) == 'boolean' then
-          if logCaveBot then
+          if isBotLoggerEnabled and isBotLoggerEnabled() and logCaveBot then
             logCaveBot(currentAction.action, string.format("Acción '%s' completada con éxito=%s (intentos: %d)", tostring(currentAction.action), tostring(result), actionRetries))
           end
           actionRetries = 0
@@ -73,19 +73,19 @@ cavebotMacro = macro(20, function()
           isSuccess = result
         else
           warn("Invalid return from cavebot action (" .. currentAction.action .. "), should be \"retry\", false or true, is: " .. tostring(result))
-          if logCaveBot then
+          if isBotLoggerEnabled and isBotLoggerEnabled() and logCaveBot then
             logCaveBot(currentAction.action, "Retorno inválido de acción: " .. tostring(result))
           end
         end
       else
         warn("warn while executing cavebot action (" .. currentAction.action .. "):\n" .. result)
-        if logCaveBot then
+        if isBotLoggerEnabled and isBotLoggerEnabled() and logCaveBot then
           logCaveBot(currentAction.action, "EXCEPCIÓN en acción: " .. tostring(result))
         end
       end    
     else
       warn("Invalid cavebot action: " .. currentAction.action)
-      if logCaveBot then
+      if isBotLoggerEnabled and isBotLoggerEnabled() and logCaveBot then
         logCaveBot("ERROR", "Acción no registrada en CaveBot: " .. tostring(currentAction.action))
       end
     end
