@@ -123,6 +123,8 @@ cavebotMacro = macro(20, function()
     end
   end
 end)
+cavebotMacro.setOff()
+CaveBot.setOff()
 
 -- config, its callback is called immediately, data can be nil
 local lastConfig = ""

@@ -428,7 +428,7 @@ end
 -- GEOMETRÍA EXACTA DE SPELLS Y ÁREAS
 -- =========================================================================
 
--- 1. EXEVO ULUS TERA: Donut AoE (Area Grande de Radio 6 con centro vacio de 3x3)
+-- 1. EXEVO ULUS TERA: Donut AoE (Area Circular de Radio 6 con centro vacio de 3x3)
 -- "como puedes ver no pega en los 8 sqms pegados al personaje ten en cuenta esto para el calculo"
 local function isInsideUlusDonut(px, py, mx, my)
   if not mx or not my then return false end
@@ -437,22 +437,92 @@ local function isInsideUlusDonut(px, py, mx, my)
   local absX = math.abs(dx)
   local absY = math.abs(dy)
 
-  -- EL CENTRO VACÍO: Los 8 SQMs pegados al personaje y la casilla del personaje NO reciben daño
+  -- EL CENTRO VACÍO: Los 8 SQMs pegados al personaje y la casilla del personaje NO reciben daño (3x3 vacio)
   if absX <= 1 and absY <= 1 then
     return false
   end
 
-  -- CÍRCULO EXTERIOR: Area Grande de 13x13 (Radio 6 exacto)
-  if absY == 0 then return absX <= 6
-  elseif absY == 1 then return absX <= 5
-  elseif absY == 2 then return absX <= 4
-  elseif absY == 3 then return absX <= 3
-  elseif absY == 4 then return absX <= 2
-  elseif absY == 5 then return absX <= 1
-  elseif absY == 6 then return absX == 0
+  -- CÍRCULO EXTERIOR EXACTO: Area Circular 13x13 (Radio 6 discreto simetrico)
+  if absY <= 2 then
+    return absX <= 6
+  elseif absY == 3 then
+    return absX <= 5
+  elseif absY == 4 then
+    return absX <= 4
+  elseif absY == 5 then
+    return absX <= 3
+  elseif absY == 6 then
+    return absX <= 2
   end
 
   return false
+end
+
+-- Validar si una criatura es impactable por spells y tiene linea de vision despejada (sin paredes/obstaculos)
+local function canShootCreature(m)
+  if not m or not m.pos then return false end
+  if m.creature and m.creature.canShoot then
+    local ok, canS = pcall(function() return m.creature:canShoot() end)
+    if ok and not canS then
+      return false
+    end
+  end
+  local tile = g_map.getTile(m.pos)
+  if not tile or not tile:canShoot() then
+    return false
+  end
+  return true
+end
+
+-- Validar si un monstruo realmente recibira el impacto de Exevo Ulus Tera
+-- Incorpora verificacion de obstaculos y prediccion de movimiento para que no entre al hueco 3x3 ni salga del radio
+local function willCreatureTakeUlusHit(px, py, m)
+  if not m or not m.pos then return false end
+  local mx, my = m.pos.x, m.pos.y
+  local dx = mx - px
+  local dy = my - py
+  local absX = math.abs(dx)
+  local absY = math.abs(dy)
+
+  -- 1. Debe estar dentro de la zona donut actual
+  if not isInsideUlusDonut(px, py, mx, my) then
+    return false
+  end
+
+  -- 2. Linea de vision y tile disparable (no a traves de paredes/puertas)
+  if not canShootCreature(m) then
+    return false
+  end
+
+  -- 3. Prediccion de movimiento:
+  -- Monstruos a distancia 2 que esten caminando hacia el jugador entraran al vacio 3x3 al momento de castear
+  local isWalking = false
+  if m.creature and m.creature.isWalking then
+    pcall(function() isWalking = m.creature:isWalking() end)
+  end
+
+  if isWalking then
+    if math.max(absX, absY) <= 2 then
+      local stepX = (dx > 0) and -1 or (dx < 0 and 1 or 0)
+      local stepY = (dy > 0) and -1 or (dy < 0 and 1 or 0)
+      local nextAbsX = math.abs(dx + stepX)
+      local nextAbsY = math.abs(dy + stepY)
+      if nextAbsX <= 1 and nextAbsY <= 1 then
+        return false -- Entra al vacio de 3x3 antes de recibir el impacto
+      end
+    end
+
+    -- Si esta en el limite exterior (radio 6) caminando hacia afuera
+    if absX >= 6 or absY >= 6 then
+      local dir = m.creature and m.creature.getDirection and m.creature:getDirection()
+      if (dx >= 6 and dir == 1) or (dx <= -6 and dir == 3) or
+         (dy >= 6 and dir == 2) or (dy <= -6 and dir == 0) then
+        return false
+      end
+    end
+  end
+
+  return true
 end
 
 -- 2. EXEVO GRAN FRIGO HUR: Cono de Onda de Hielo (Small Wave 7 SQMs)
@@ -511,7 +581,7 @@ end
 -- EVALUADORES DE OBJETIVOS CON PROTECCIÓN PVP
 -- =========================================================================
 
--- Evaluar monstruos alcanzados por Exevo Ulus Tera (Donut)
+-- Evaluar monstruos alcanzados por Exevo Ulus Tera (Donut) con precision quirurgica
 local function evaluateUlusDonut(playerPos, aliveMonsters, innocentPlayers)
   local px, py = playerPos.x, playerPos.y
 
@@ -525,7 +595,7 @@ local function evaluateUlusDonut(playerPos, aliveMonsters, innocentPlayers)
 
   local count = 0
   for _, m in ipairs(aliveMonsters) do
-    if isInsideUlusDonut(px, py, m.pos.x, m.pos.y) then
+    if willCreatureTakeUlusHit(px, py, m) then
       count = count + 1
     end
   end
@@ -554,7 +624,7 @@ local function evaluateGranFrigoHur(playerPos, aliveMonsters, innocentPlayers)
     if not blocked then
       local count = 0
       for _, m in ipairs(aliveMonsters) do
-        if isInsideGranFrigoHur(px, py, dir, m.pos.x, m.pos.y) then
+        if isInsideGranFrigoHur(px, py, dir, m.pos.x, m.pos.y) and canShootCreature(m) then
           count = count + 1
         end
       end
@@ -590,7 +660,7 @@ local function evaluateTeraHur(playerPos, aliveMonsters, innocentPlayers)
     if not blocked then
       local count = 0
       for _, m in ipairs(aliveMonsters) do
-        if isInsideTeraHur(px, py, dir, m.pos.x, m.pos.y) then
+        if isInsideTeraHur(px, py, dir, m.pos.x, m.pos.y) and canShootCreature(m) then
           count = count + 1
         end
       end

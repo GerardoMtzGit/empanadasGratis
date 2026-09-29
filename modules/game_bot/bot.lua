@@ -319,6 +319,73 @@ function refresh()
     botStorage = result
   end
 
+  -- REGLA DEL USUARIO: Al prender el bot, TODAS las configuraciones deben estar apagadas
+  -- EXCEPTO Healing y Targeting. CaveBot, macros, dropper, familiar, etc., quedan en OFF
+  -- hasta que el usuario decida prenderlos manualmente en el cliente.
+  if settings[index].enabled and botStorage then
+    -- 1. Desactivar CaveBot configs y waypoints
+    if botStorage._configs then
+      if botStorage._configs.cavebot_configs then
+        botStorage._configs.cavebot_configs.enabled = false
+      end
+      if botStorage._configs.targetbot_configs then
+        botStorage._configs.targetbot_configs.enabled = true
+      end
+    end
+
+    -- 2. Desactivar todos los macros
+    if botStorage._macros and type(botStorage._macros) == "table" then
+      for mKey, _ in pairs(botStorage._macros) do
+        botStorage._macros[mKey] = false
+      end
+    end
+
+    -- 3. Lista blanca de modulos permitidos en ON (Solo Healing y Targeting, mas utilidades basicas de UI)
+    local allowedOn = {
+      ["newHealer"] = true,
+      ["HealBot"] = true,
+      ["druid_targeting"] = true,
+      ["TargetBot"] = true,
+      ["targetIcon"] = true,
+      ["iconsTab"] = true,
+      ["cooldownHud"] = true,
+      ["renameContainers"] = true,
+      ["caveBotIcon"] = true,
+    }
+
+    for key, val in pairs(botStorage) do
+      if type(val) == "table" and val.enabled ~= nil then
+        if not allowedOn[key] then
+          val.enabled = false
+        else
+          if key == "newHealer" or key == "HealBot" or key == "druid_targeting" or key == "TargetBot" then
+            val.enabled = true
+          end
+        end
+      end
+    end
+
+    -- Forzar explicitamente modulos esenciales
+    if not botStorage.newHealer then botStorage.newHealer = { enabled = true } else botStorage.newHealer.enabled = true end
+    if not botStorage.druid_targeting then botStorage.druid_targeting = { enabled = true } else botStorage.druid_targeting.enabled = true end
+    if botStorage.HealBot then botStorage.HealBot.enabled = true end
+    if botStorage.TargetBot then botStorage.TargetBot.enabled = true end
+
+    -- Forzar explicitamente modulos que deben estar apagados
+    if botStorage.druid_familiar then botStorage.druid_familiar.enabled = false end
+    if botStorage.dropper then botStorage.dropper.enabled = false end
+    if botStorage.alarms then botStorage.alarms.enabled = false end
+    if botStorage.combobot then botStorage.combobot.enabled = false end
+    if botStorage.pushmax then botStorage.pushmax.enabled = false end
+    if botStorage.sdOnly then botStorage.sdOnly.enabled = false end
+    if botStorage.tirar_runa then botStorage.tirar_runa.enabled = false end
+    if botStorage.EquipperPanel then botStorage.EquipperPanel.enabled = false end
+    if botStorage.emergencyEquip then botStorage.emergencyEquip.enabled = false end
+    if botStorage.specialDeposit then botStorage.specialDeposit.enabled = false end
+    if botStorage.refillHud then botStorage.refillHud.enabled = false end
+    if botStorage.bot_logger then botStorage.bot_logger.enabled = false end
+  end
+
   -- run script
   local status, result = pcall(function() 
     return executeBot(configName, botStorage, botTabs, message, save, refresh, botWebSockets) end

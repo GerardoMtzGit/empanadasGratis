@@ -11,7 +11,7 @@
     "commandsEnabled": true,
     "onSayEnabled": false,
     "attack": "",
-    "enabled": true,
+    "enabled": false,
     "spell": "",
     "onShootEnabled": false,
     "attackItemToggle": false,
@@ -285,7 +285,7 @@
   "_configs": {
     "cavebot_configs": {
       "selected": "Waspoid",
-      "enabled": true
+      "enabled": false
     },
     "targetbot_configs": {
       "enabled": true,
@@ -312,7 +312,7 @@
   },
   "autoParty": {
     "onMove": true,
-    "enabled": true,
+    "enabled": false,
     "leaderName": "Chile Tatemado",
     "autoPartyList": [
       "Daree",
@@ -327,19 +327,19 @@
   },
   "_macros": {
     "": false,
-    "Follow Change": true,
+    "Follow Change": false,
     "Cast Food": false,
-    "AntiRS & Msg": true,
+    "AntiRS & Msg": false,
     "Quiver Manager": false,
     "EquipSSA": false,
     "Follow": false,
-    "Eat Food": true,
-    "Exchange money": true,
-    "Depot Withdraw": true,
-    "use divine": true,
-    "Hold Target": true,
+    "Eat Food": false,
+    "Exchange money": false,
+    "Depot Withdraw": false,
+    "use divine": false,
+    "Hold Target": false,
     "EquipRing": false,
-    "Send message on trade": true
+    "Send message on trade": false
   },
   "moneyItems": [
     {
@@ -390,7 +390,7 @@
         "mana": true
       }
     ],
-    "enabled": false,
+    "enabled": true,
     "groups": [],
     "customPlayers": [],
     "conditions": {
